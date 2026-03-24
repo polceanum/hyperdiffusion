@@ -2,11 +2,15 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Dict, List, Optional
 
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 import torch
 import torch.nn.functional as F
 
@@ -31,6 +35,8 @@ class ExperimentConfig:
     decoder_hidden: int = 256
     denoiser_hidden: int = 128
     denoiser_depth: int = 4
+    target_hidden_dim: int = 64
+    target_depth: int = 4
     learning_rate_stage1: float = 1e-3
     learning_rate_stage2: float = 2e-4
     grad_clip: float = 1.0
@@ -39,6 +45,8 @@ class ExperimentConfig:
     diagnostic_samples: int = 8
     mismatch_batches: int = 16
     support_size_sweep: List[int] | None = None
+    visualization_count: int = 4
+    visualization_grid_size: int = 120
     device: str = "cpu"
     seed: int = 0
 
@@ -68,9 +76,10 @@ class Experiment:
         self.config = config
         self.output_dir = output_dir
         self.output_dir.mkdir(parents=True, exist_ok=True)
+        (self.output_dir / "plots").mkdir(exist_ok=True)
 
         self.device = torch.device(config.device)
-        self.arch = TargetArchitecture()
+        self.arch = TargetArchitecture(hidden_dim=config.target_hidden_dim, depth=config.target_depth)
         self.system = HyperNetworkSystem(
             arch=self.arch,
             cond_dim=config.cond_dim,
@@ -94,9 +103,10 @@ class Experiment:
         self,
         support_size: Optional[int] = None,
         family_names: Optional[List[str]] = None,
+        batch_size: Optional[int] = None,
     ) -> EpisodeBatch:
         return make_episode_batch(
-            batch_size=self.config.batch_size,
+            batch_size=batch_size or self.config.batch_size,
             support_size=support_size or self.config.support_size,
             query_size=self.config.query_size,
             family_names=family_names or self.config.families,
@@ -157,10 +167,7 @@ class Experiment:
 
         z0_hat = self.schedule.predict_z0(z_t, t_idx, pred_noise)
         z0_error = (z0_hat - latent).pow(2).mean().sqrt().item()
-        return {
-            "stage2_loss": loss.item(),
-            "stage2_rmse": z0_error,
-        }
+        return {"stage2_loss": loss.item(), "stage2_rmse": z0_error}
 
     @staticmethod
     def _bce_per_item(logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
@@ -185,7 +192,7 @@ class Experiment:
 
     @staticmethod
     def _prediction_disagreement(logits: torch.Tensor) -> torch.Tensor:
-        pred = (logits > 0.0).float().squeeze(-1)  # [B, K, Q]
+        pred = (logits > 0.0).float().squeeze(-1)
         if pred.shape[1] < 2:
             return torch.zeros(pred.shape[0], device=pred.device)
         disagree = (pred[:, :, None, :] != pred[:, None, :, :]).float().mean(dim=-1)
@@ -207,23 +214,24 @@ class Experiment:
 
     @torch.no_grad()
     def _sample_many(self, context: torch.Tensor, num_samples: int) -> torch.Tensor:
-        samples = []
-        for _ in range(num_samples):
-            samples.append(ddim_sample(self.denoiser, self.schedule, context, self.config.latent_dim))
-        return torch.stack(samples, dim=1)
+        return torch.stack(
+            [ddim_sample(self.denoiser, self.schedule, context, self.config.latent_dim) for _ in range(num_samples)],
+            dim=1,
+        )
 
     @torch.no_grad()
-    def _support_sweep_summary(self) -> Dict[str, Dict[str, float]]:
+    def _support_sweep_summary(self, family_names: Optional[List[str]] = None) -> Dict[str, Dict[str, float]]:
         sweep_sizes = self.config.support_size_sweep or []
+        active_families = family_names or self.config.families
         result: Dict[str, Dict[str, float]] = {}
         for support_size in sweep_sizes:
-            batch = self.to_device(self.sample_batch(support_size=support_size))
+            batch = self.to_device(self.sample_batch(support_size=support_size, family_names=active_families))
             context, latent = self.system.encode(batch.support_x, batch.support_y)
             _, acc, _ = self._decode_and_score(batch.query_x, batch.query_y, latent, context)
             z_samples = self._sample_many(context, self.config.diagnostic_samples)
             diff_accs = []
-            for k in range(z_samples.shape[1]):
-                _, acc_k, _ = self._decode_and_score(batch.query_x, batch.query_y, z_samples[:, k], context)
+            for sample_idx in range(z_samples.shape[1]):
+                _, acc_k, _ = self._decode_and_score(batch.query_x, batch.query_y, z_samples[:, sample_idx], context)
                 diff_accs.append(acc_k)
             diff_acc = torch.stack(diff_accs, dim=1).mean(dim=1)
             result[str(support_size)] = {
@@ -233,15 +241,19 @@ class Experiment:
         return result
 
     @torch.no_grad()
-    def _mismatch_summary(self) -> Dict[str, float]:
+    def _mismatch_summary(self, family_names: Optional[List[str]] = None) -> Dict[str, float]:
+        active_families = family_names or self.config.families
+        if len(active_families) < 2:
+            return {"encoder_acc": float("nan"), "diffusion_acc": float("nan"), "num_mismatch_episodes": 0.0}
+
         encoder_accs: List[float] = []
         diffusion_accs: List[float] = []
         attempts = 0
         collected = 0
-        while collected < self.config.mismatch_batches and attempts < self.config.mismatch_batches * 10:
+        while collected < self.config.mismatch_batches and attempts < self.config.mismatch_batches * 20:
             attempts += 1
-            batch_a = self.to_device(self.sample_batch())
-            batch_b = self.to_device(self.sample_batch())
+            batch_a = self.to_device(self.sample_batch(family_names=active_families))
+            batch_b = self.to_device(self.sample_batch(family_names=active_families))
             keep = [i for i, (fa, fb) in enumerate(zip(batch_a.family_name, batch_b.family_name)) if fa != fb]
             if not keep:
                 continue
@@ -272,7 +284,7 @@ class Experiment:
         self.denoiser.eval()
         num_batches = num_batches or self.config.eval_batches
         num_samples = self.config.diagnostic_samples
-        family_names = family_names or self.config.families
+        active_families = family_names or self.config.families
 
         family_scores: Dict[str, Dict[str, List[float]]] = {}
         overall: Dict[str, List[float]] = {
@@ -288,7 +300,7 @@ class Experiment:
         }
 
         for _ in range(num_batches):
-            batch = self.to_device(self.sample_batch(family_names=family_names))
+            batch = self.to_device(self.sample_batch(family_names=active_families))
             context, latent = self.system.encode(batch.support_x, batch.support_y)
             logits_enc, acc_enc, _ = self._decode_and_score(batch.query_x, batch.query_y, latent, context)
             loss_enc = self._bce_per_item(logits_enc, batch.query_y)
@@ -297,8 +309,8 @@ class Experiment:
             logits_all = []
             acc_all = []
             flat_all = []
-            for k in range(num_samples):
-                logits_k, acc_k, flat_k = self._decode_and_score(batch.query_x, batch.query_y, z_samples[:, k], context)
+            for sample_idx in range(num_samples):
+                logits_k, acc_k, flat_k = self._decode_and_score(batch.query_x, batch.query_y, z_samples[:, sample_idx], context)
                 logits_all.append(logits_k)
                 acc_all.append(acc_k)
                 flat_all.append(flat_k)
@@ -359,10 +371,80 @@ class Experiment:
             "by_family": {family: summarize(values) for family, values in family_scores.items()},
             "diagnostics": {
                 "sample_count": num_samples,
-                "mismatch": self._mismatch_summary(),
-                "support_size_sweep": self._support_sweep_summary(),
+                "mismatch": self._mismatch_summary(active_families),
+                "support_size_sweep": self._support_sweep_summary(active_families),
             },
         }
+
+    @torch.no_grad()
+    def _build_grid(self, grid_size: int) -> torch.Tensor:
+        axis = torch.linspace(-2.4, 2.4, grid_size, device=self.device)
+        grid_x, grid_y = torch.meshgrid(axis, axis, indexing="xy")
+        return torch.stack([grid_x.reshape(-1), grid_y.reshape(-1)], dim=-1)
+
+    @torch.no_grad()
+    def _plot_episode_set(self, family_names: List[str], prefix: str) -> List[str]:
+        if self.config.visualization_count <= 0:
+            return []
+        paths: List[str] = []
+        grid = self._build_grid(self.config.visualization_grid_size)
+        batch = self.to_device(self.sample_batch(family_names=family_names, batch_size=self.config.visualization_count))
+        context, latent = self.system.encode(batch.support_x, batch.support_y)
+        z_samples = self._sample_many(context, self.config.diagnostic_samples)
+        grid_batch = grid.unsqueeze(0).expand(batch.support_x.shape[0], -1, -1)
+
+        logits_enc, acc_enc, _ = self._decode_and_score(batch.query_x, batch.query_y, latent, context)
+        grid_logits_enc, _, _ = self._decode_and_score(grid_batch, torch.zeros(batch.support_x.shape[0], grid_batch.shape[1], 1, device=self.device), latent, context)
+
+        sample_query_accs = []
+        sample_grid_probs = []
+        for sample_idx in range(self.config.diagnostic_samples):
+            logits_q, acc_k, _ = self._decode_and_score(batch.query_x, batch.query_y, z_samples[:, sample_idx], context)
+            sample_query_accs.append(acc_k)
+            grid_logits_k, _, _ = self._decode_and_score(grid_batch, torch.zeros(batch.support_x.shape[0], grid_batch.shape[1], 1, device=self.device), z_samples[:, sample_idx], context)
+            sample_grid_probs.append(torch.sigmoid(grid_logits_k.squeeze(-1)))
+
+        acc_stack = torch.stack(sample_query_accs, dim=1)
+        best_idx = acc_stack.argmax(dim=1)
+        grid_probs_stack = torch.stack(sample_grid_probs, dim=1)
+        best_grid_probs = grid_probs_stack[torch.arange(grid_probs_stack.shape[0], device=self.device), best_idx]
+        mean_grid_probs = grid_probs_stack.mean(dim=1)
+        disagreement_grid = ((grid_probs_stack > 0.5).float().std(dim=1) > 0).float().mean(dim=-1)
+
+        grid_size = self.config.visualization_grid_size
+        for row_idx in range(batch.support_x.shape[0]):
+            family = batch.family_name[row_idx]
+            fig, axes = plt.subplots(1, 4, figsize=(16, 4), constrained_layout=True)
+            panels = [
+                (torch.sigmoid(grid_logits_enc[row_idx].squeeze(-1)).reshape(grid_size, grid_size).cpu(), f"encoder acc={acc_enc[row_idx].item():.3f}"),
+                (best_grid_probs[row_idx].reshape(grid_size, grid_size).cpu(), f"best sample acc={acc_stack[row_idx, best_idx[row_idx]].item():.3f}"),
+                (mean_grid_probs[row_idx].reshape(grid_size, grid_size).cpu(), "diffusion mean prob"),
+                ((grid_probs_stack[row_idx] > 0.5).float().std(dim=0).reshape(grid_size, grid_size).cpu(), f"sample disagreement={disagreement_grid[row_idx].item():.3f}"),
+            ]
+            extent = (-2.4, 2.4, -2.4, 2.4)
+            for ax, (image, title) in zip(axes, panels):
+                ax.imshow(image.T, origin="lower", extent=extent, vmin=0.0, vmax=1.0, cmap="coolwarm", alpha=0.85)
+                sx = batch.support_x[row_idx, :, 0].cpu().numpy()
+                sy = batch.support_x[row_idx, :, 1].cpu().numpy()
+                sl = batch.support_y[row_idx, :, 0].cpu().numpy()
+                qx = batch.query_x[row_idx, :, 0].cpu().numpy()
+                qy = batch.query_x[row_idx, :, 1].cpu().numpy()
+                ql = batch.query_y[row_idx, :, 0].cpu().numpy()
+                ax.scatter(qx[ql < 0.5], qy[ql < 0.5], s=8, marker=".", color="black", alpha=0.15)
+                ax.scatter(qx[ql > 0.5], qy[ql > 0.5], s=8, marker=".", color="white", alpha=0.2)
+                ax.scatter(sx[sl < 0.5], sy[sl < 0.5], s=30, edgecolor="black", facecolor="tab:blue", linewidth=0.6)
+                ax.scatter(sx[sl > 0.5], sy[sl > 0.5], s=30, edgecolor="black", facecolor="tab:orange", linewidth=0.6)
+                ax.set_title(title)
+                ax.set_xlim(-2.4, 2.4)
+                ax.set_ylim(-2.4, 2.4)
+                ax.set_xticks([])
+                ax.set_yticks([])
+            fig.suptitle(f"{prefix} | family={family}")
+            out_path = self.output_dir / "plots" / f"{prefix}_{row_idx:02d}_{family}.png"
+            fig.savefig(out_path, dpi=140)
+            plt.close(fig)
+            paths.append(str(out_path.relative_to(self.output_dir)))
+        return paths
 
     def save_checkpoint(self) -> None:
         payload = {
@@ -396,6 +478,7 @@ class Experiment:
                 )
 
         summary = self.evaluate()
+        summary["artifacts"] = {"plots_train": self._plot_episode_set(self.config.families, "train")}
         if self.config.eval_families:
             summary["generalization"] = {
                 "eval_families": self.config.eval_families,
@@ -404,6 +487,7 @@ class Experiment:
                     family_names=self.config.eval_families,
                 ),
             }
+            summary["artifacts"]["plots_eval"] = self._plot_episode_set(self.config.eval_families, "eval")
 
         elapsed = time.time() - t0
         summary["runtime_seconds"] = elapsed
@@ -437,6 +521,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--decoder-hidden", type=int, default=256)
     parser.add_argument("--denoiser-hidden", type=int, default=128)
     parser.add_argument("--denoiser-depth", type=int, default=4)
+    parser.add_argument("--target-hidden-dim", type=int, default=64)
+    parser.add_argument("--target-depth", type=int, default=4)
     parser.add_argument("--learning-rate-stage1", type=float, default=1e-3)
     parser.add_argument("--learning-rate-stage2", type=float, default=2e-4)
     parser.add_argument("--grad-clip", type=float, default=1.0)
@@ -445,6 +531,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--diagnostic-samples", type=int, default=8)
     parser.add_argument("--mismatch-batches", type=int, default=16)
     parser.add_argument("--support-size-sweep", type=int, nargs="*", default=[2, 4, 8, 16])
+    parser.add_argument("--visualization-count", type=int, default=4)
+    parser.add_argument("--visualization-grid-size", type=int, default=120)
     return parser
 
 
@@ -465,6 +553,8 @@ def main() -> None:
         decoder_hidden=args.decoder_hidden,
         denoiser_hidden=args.denoiser_hidden,
         denoiser_depth=args.denoiser_depth,
+        target_hidden_dim=args.target_hidden_dim,
+        target_depth=args.target_depth,
         learning_rate_stage1=args.learning_rate_stage1,
         learning_rate_stage2=args.learning_rate_stage2,
         grad_clip=args.grad_clip,
@@ -473,6 +563,8 @@ def main() -> None:
         diagnostic_samples=args.diagnostic_samples,
         mismatch_batches=args.mismatch_batches,
         support_size_sweep=args.support_size_sweep,
+        visualization_count=args.visualization_count,
+        visualization_grid_size=args.visualization_grid_size,
         device=args.device,
         seed=args.seed,
     )

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Dict, Tuple
+from typing import Dict, List, Tuple
 
 import torch
 import torch.nn as nn
@@ -12,19 +12,25 @@ import torch.nn.functional as F
 @dataclass(frozen=True)
 class TargetArchitecture:
     in_dim: int = 2
-    hidden_dim: int = 32
+    hidden_dim: int = 64
     out_dim: int = 1
+    depth: int = 4
 
     @property
     def shapes(self) -> Dict[str, Tuple[int, ...]]:
-        return {
+        if self.depth < 2:
+            raise ValueError("Target architecture depth must be at least 2.")
+
+        shapes: Dict[str, Tuple[int, ...]] = {
             "w1": (self.hidden_dim, self.in_dim),
             "b1": (self.hidden_dim,),
-            "w2": (self.hidden_dim, self.hidden_dim),
-            "b2": (self.hidden_dim,),
-            "w3": (self.out_dim, self.hidden_dim),
-            "b3": (self.out_dim,),
         }
+        for layer_idx in range(2, self.depth):
+            shapes[f"w{layer_idx}"] = (self.hidden_dim, self.hidden_dim)
+            shapes[f"b{layer_idx}"] = (self.hidden_dim,)
+        shapes[f"w{self.depth}"] = (self.out_dim, self.hidden_dim)
+        shapes[f"b{self.depth}"] = (self.out_dim,)
+        return shapes
 
     @property
     def num_params(self) -> int:
@@ -140,12 +146,16 @@ def unpack_parameters(flat: torch.Tensor, arch: TargetArchitecture) -> Dict[str,
 
 
 def functional_target_network(x: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-    h = torch.einsum("bni,boi->bno", x, params["w1"]) + params["b1"].unsqueeze(1)
-    h = F.relu(h)
-    h = torch.einsum("bni,boi->bno", h, params["w2"]) + params["b2"].unsqueeze(1)
-    h = F.relu(h)
-    out = torch.einsum("bni,boi->bno", h, params["w3"]) + params["b3"].unsqueeze(1)
-    return out
+    layer_ids: List[int] = sorted({int(name[1:]) for name in params if name.startswith("w")})
+    h = x
+    last_layer = max(layer_ids)
+    for layer_idx in layer_ids:
+        w = params[f"w{layer_idx}"]
+        b = params[f"b{layer_idx}"]
+        h = torch.einsum("bni,boi->bno", h, w) + b.unsqueeze(1)
+        if layer_idx != last_layer:
+            h = F.relu(h)
+    return h
 
 
 def sinusoidal_time_embedding(t: torch.Tensor, dim: int) -> torch.Tensor:
