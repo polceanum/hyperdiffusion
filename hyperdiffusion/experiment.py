@@ -5,19 +5,20 @@ import json
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional
+from typing import Dict, List, Optional
 
 import torch
 import torch.nn.functional as F
 
 from .diffusion import DiffusionSchedule, ddim_sample
 from .models import DiffusionDenoiser, HyperNetworkSystem, TargetArchitecture, functional_target_network
-from .tasks import EpisodeBatch, make_episode_batch
+from .tasks import DEFAULT_TRAIN_FAMILIES, EpisodeBatch, make_episode_batch
 
 
 @dataclass
 class ExperimentConfig:
     families: List[str]
+    eval_families: List[str] | None = None
     train_steps_stage1: int = 1200
     train_steps_stage2: int = 1200
     eval_batches: int = 40
@@ -87,15 +88,18 @@ class Experiment:
 
         self.opt_stage1 = torch.optim.AdamW(self.system.parameters(), lr=config.learning_rate_stage1)
         self.opt_stage2 = torch.optim.AdamW(self.denoiser.parameters(), lr=config.learning_rate_stage2)
-
         self.generator = torch.Generator().manual_seed(config.seed)
 
-    def sample_batch(self, support_size: Optional[int] = None) -> EpisodeBatch:
+    def sample_batch(
+        self,
+        support_size: Optional[int] = None,
+        family_names: Optional[List[str]] = None,
+    ) -> EpisodeBatch:
         return make_episode_batch(
             batch_size=self.config.batch_size,
             support_size=support_size or self.config.support_size,
             query_size=self.config.query_size,
-            family_names=self.config.families,
+            family_names=family_names or self.config.families,
             generator=self.generator,
         )
 
@@ -172,7 +176,6 @@ class Experiment:
 
     @staticmethod
     def _pairwise_mean_l2(x: torch.Tensor) -> torch.Tensor:
-        # x: [B, K, D]
         if x.shape[1] < 2:
             return torch.zeros(x.shape[0], device=x.device)
         d = torch.cdist(x, x, p=2)
@@ -182,20 +185,21 @@ class Experiment:
 
     @staticmethod
     def _prediction_disagreement(logits: torch.Tensor) -> torch.Tensor:
-        # logits: [B, K, Q, 1]
         pred = (logits > 0.0).float().squeeze(-1)  # [B, K, Q]
         if pred.shape[1] < 2:
             return torch.zeros(pred.shape[0], device=pred.device)
-
-        # Pairwise disagreement across samples, averaged over query points.
-        # Result shape: [B, K, K]
         disagree = (pred[:, :, None, :] != pred[:, None, :, :]).float().mean(dim=-1)
-
         k = pred.shape[1]
         mask = torch.ones(k, k, device=pred.device, dtype=torch.bool).triu(diagonal=1)
         return disagree[:, mask].mean(dim=-1)
 
-    def _decode_and_score(self, query_x: torch.Tensor, query_y: torch.Tensor, z: torch.Tensor, context: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def _decode_and_score(
+        self,
+        query_x: torch.Tensor,
+        query_y: torch.Tensor,
+        z: torch.Tensor,
+        context: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         params = self.system.decode(z, context)
         logits = functional_target_network(query_x, params)
         flat_params = torch.cat([v.reshape(v.shape[0], -1) for v in params.values()], dim=-1)
@@ -215,7 +219,7 @@ class Experiment:
         for support_size in sweep_sizes:
             batch = self.to_device(self.sample_batch(support_size=support_size))
             context, latent = self.system.encode(batch.support_x, batch.support_y)
-            logits, acc, _ = self._decode_and_score(batch.query_x, batch.query_y, latent, context)
+            _, acc, _ = self._decode_and_score(batch.query_x, batch.query_y, latent, context)
             z_samples = self._sample_many(context, self.config.diagnostic_samples)
             diff_accs = []
             for k in range(z_samples.shape[1]):
@@ -250,9 +254,9 @@ class Experiment:
                 family_name=[f"support:{batch_a.family_name[i]}->query:{batch_b.family_name[i]}" for i in keep],
             )
             context, latent = self.system.encode(mixed.support_x, mixed.support_y)
-            logits_enc, acc_enc, _ = self._decode_and_score(mixed.query_x, mixed.query_y, latent, context)
+            _, acc_enc, _ = self._decode_and_score(mixed.query_x, mixed.query_y, latent, context)
             z_sample = ddim_sample(self.denoiser, self.schedule, context, self.config.latent_dim)
-            logits_diff, acc_diff, _ = self._decode_and_score(mixed.query_x, mixed.query_y, z_sample, context)
+            _, acc_diff, _ = self._decode_and_score(mixed.query_x, mixed.query_y, z_sample, context)
             encoder_accs.extend(acc_enc.cpu().tolist())
             diffusion_accs.extend(acc_diff.cpu().tolist())
             collected += 1
@@ -263,11 +267,12 @@ class Experiment:
         }
 
     @torch.no_grad()
-    def evaluate(self, num_batches: Optional[int] = None) -> Dict[str, object]:
+    def evaluate(self, num_batches: Optional[int] = None, family_names: Optional[List[str]] = None) -> Dict[str, object]:
         self.system.eval()
         self.denoiser.eval()
         num_batches = num_batches or self.config.eval_batches
         num_samples = self.config.diagnostic_samples
+        family_names = family_names or self.config.families
 
         family_scores: Dict[str, Dict[str, List[float]]] = {}
         overall: Dict[str, List[float]] = {
@@ -283,7 +288,7 @@ class Experiment:
         }
 
         for _ in range(num_batches):
-            batch = self.to_device(self.sample_batch())
+            batch = self.to_device(self.sample_batch(family_names=family_names))
             context, latent = self.system.encode(batch.support_x, batch.support_y)
             logits_enc, acc_enc, _ = self._decode_and_score(batch.query_x, batch.query_y, latent, context)
             loss_enc = self._bce_per_item(logits_enc, batch.query_y)
@@ -391,6 +396,15 @@ class Experiment:
                 )
 
         summary = self.evaluate()
+        if self.config.eval_families:
+            summary["generalization"] = {
+                "eval_families": self.config.eval_families,
+                "eval_summary": self.evaluate(
+                    num_batches=max(24, self.config.eval_batches // 2),
+                    family_names=self.config.eval_families,
+                ),
+            }
+
         elapsed = time.time() - t0
         summary["runtime_seconds"] = elapsed
         summary["config"] = asdict(self.config)
@@ -407,7 +421,8 @@ class Experiment:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Toy hyperdiffusion experiment")
     parser.add_argument("--output-dir", type=str, default="runs/default")
-    parser.add_argument("--families", type=str, nargs="+", default=["linear", "xor", "moons", "circles"])
+    parser.add_argument("--families", type=str, nargs="+", default=DEFAULT_TRAIN_FAMILIES)
+    parser.add_argument("--eval-families", type=str, nargs="*", default=None)
     parser.add_argument("--device", type=str, default="cpu")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--train-steps-stage1", type=int, default=1200)
@@ -437,6 +452,7 @@ def main() -> None:
     args = build_parser().parse_args()
     config = ExperimentConfig(
         families=args.families,
+        eval_families=args.eval_families,
         train_steps_stage1=args.train_steps_stage1,
         train_steps_stage2=args.train_steps_stage2,
         eval_batches=args.eval_batches,
