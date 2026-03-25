@@ -16,7 +16,7 @@ import torch.nn.functional as F
 
 from .diffusion import DiffusionSchedule, ddim_sample
 from .models import DiffusionDenoiser, HyperNetworkSystem, TargetArchitecture, functional_target_network
-from .tasks import DEFAULT_TRAIN_FAMILIES, EpisodeBatch, make_episode_batch
+from .tasks import DEFAULT_TRAIN_FAMILIES, EXPANDED_TRAIN_FAMILIES, ORIGINAL_TRAIN_GROUPS, EpisodeBatch, make_episode_batch
 
 
 @dataclass
@@ -47,6 +47,10 @@ class ExperimentConfig:
     support_size_sweep: List[int] | None = None
     visualization_count: int = 4
     visualization_grid_size: int = 120
+    encoder_type: str = "attention"
+    attention_heads: int = 4
+    attention_layers: int = 3
+    support_sweep_batches: int = 16
     device: str = "cpu"
     seed: int = 0
 
@@ -86,6 +90,9 @@ class Experiment:
             latent_dim=config.latent_dim,
             encoder_hidden=config.encoder_hidden,
             decoder_hidden=config.decoder_hidden,
+            encoder_type=config.encoder_type,
+            attention_heads=config.attention_heads,
+            attention_layers=config.attention_layers,
         ).to(self.device)
         self.denoiser = DiffusionDenoiser(
             latent_dim=config.latent_dim,
@@ -225,18 +232,23 @@ class Experiment:
         active_families = family_names or self.config.families
         result: Dict[str, Dict[str, float]] = {}
         for support_size in sweep_sizes:
-            batch = self.to_device(self.sample_batch(support_size=support_size, family_names=active_families))
-            context, latent = self.system.encode(batch.support_x, batch.support_y)
-            _, acc, _ = self._decode_and_score(batch.query_x, batch.query_y, latent, context)
-            z_samples = self._sample_many(context, self.config.diagnostic_samples)
-            diff_accs = []
-            for sample_idx in range(z_samples.shape[1]):
-                _, acc_k, _ = self._decode_and_score(batch.query_x, batch.query_y, z_samples[:, sample_idx], context)
-                diff_accs.append(acc_k)
-            diff_acc = torch.stack(diff_accs, dim=1).mean(dim=1)
+            enc_vals: List[float] = []
+            diff_vals: List[float] = []
+            for _ in range(self.config.support_sweep_batches):
+                batch = self.to_device(self.sample_batch(support_size=support_size, family_names=active_families))
+                context, latent = self.system.encode(batch.support_x, batch.support_y)
+                _, acc, _ = self._decode_and_score(batch.query_x, batch.query_y, latent, context)
+                z_samples = self._sample_many(context, self.config.diagnostic_samples)
+                diff_accs = []
+                for sample_idx in range(z_samples.shape[1]):
+                    _, acc_k, _ = self._decode_and_score(batch.query_x, batch.query_y, z_samples[:, sample_idx], context)
+                    diff_accs.append(acc_k)
+                diff_acc = torch.stack(diff_accs, dim=1).mean(dim=1)
+                enc_vals.extend(acc.cpu().tolist())
+                diff_vals.extend(diff_acc.cpu().tolist())
             result[str(support_size)] = {
-                "encoder_acc": float(acc.mean().item()),
-                "diffusion_acc_mean": float(diff_acc.mean().item()),
+                "encoder_acc": self._mean(enc_vals),
+                "diffusion_acc_mean": self._mean(diff_vals),
             }
         return result
 
@@ -366,9 +378,13 @@ class Experiment:
         def summarize(d: Dict[str, List[float]]) -> Dict[str, float]:
             return {k: self._mean(v) for k, v in d.items()}
 
+        by_family_summary = {family: summarize(values) for family, values in family_scores.items()}
+        macro_average = {k: self._mean([fam[k] for fam in by_family_summary.values()]) for k in next(iter(by_family_summary.values())).keys()} if by_family_summary else {}
+
         return {
             "overall": summarize(overall),
-            "by_family": {family: summarize(values) for family, values in family_scores.items()},
+            "macro_average": macro_average,
+            "by_family": by_family_summary,
             "diagnostics": {
                 "sample_count": num_samples,
                 "mismatch": self._mismatch_summary(active_families),
@@ -446,6 +462,18 @@ class Experiment:
             paths.append(str(out_path.relative_to(self.output_dir)))
         return paths
 
+    def _train_group_evaluations(self) -> Dict[str, object]:
+        configured = set(self.config.families)
+        groups: Dict[str, object] = {}
+        for group_name, group_families in ORIGINAL_TRAIN_GROUPS.items():
+            active = [name for name in group_families if name in configured]
+            if active:
+                groups[group_name] = {
+                    "families": active,
+                    "summary": self.evaluate(num_batches=self.config.eval_batches, family_names=active),
+                }
+        return groups
+
     def save_checkpoint(self) -> None:
         payload = {
             "config": asdict(self.config),
@@ -478,12 +506,13 @@ class Experiment:
                 )
 
         summary = self.evaluate()
+        summary["train_group_evals"] = self._train_group_evaluations()
         summary["artifacts"] = {"plots_train": self._plot_episode_set(self.config.families, "train")}
         if self.config.eval_families:
             summary["generalization"] = {
                 "eval_families": self.config.eval_families,
                 "eval_summary": self.evaluate(
-                    num_batches=max(24, self.config.eval_batches // 2),
+                    num_batches=self.config.eval_batches,
                     family_names=self.config.eval_families,
                 ),
             }
@@ -506,6 +535,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Toy hyperdiffusion experiment")
     parser.add_argument("--output-dir", type=str, default="runs/default")
     parser.add_argument("--families", type=str, nargs="+", default=DEFAULT_TRAIN_FAMILIES)
+    parser.add_argument("--expanded-train-families", action="store_true", help="Use the default train families plus the new bridge families.")
     parser.add_argument("--eval-families", type=str, nargs="*", default=None)
     parser.add_argument("--device", type=str, default="cpu")
     parser.add_argument("--seed", type=int, default=0)
@@ -533,13 +563,18 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--support-size-sweep", type=int, nargs="*", default=[2, 4, 8, 16])
     parser.add_argument("--visualization-count", type=int, default=4)
     parser.add_argument("--visualization-grid-size", type=int, default=120)
+    parser.add_argument("--encoder-type", type=str, default="attention", choices=["attention", "deepset"])
+    parser.add_argument("--attention-heads", type=int, default=4)
+    parser.add_argument("--attention-layers", type=int, default=3)
+    parser.add_argument("--support-sweep-batches", type=int, default=16)
     return parser
 
 
 def main() -> None:
     args = build_parser().parse_args()
+    families = EXPANDED_TRAIN_FAMILIES if args.expanded_train_families else args.families
     config = ExperimentConfig(
-        families=args.families,
+        families=families,
         eval_families=args.eval_families,
         train_steps_stage1=args.train_steps_stage1,
         train_steps_stage2=args.train_steps_stage2,
@@ -565,6 +600,10 @@ def main() -> None:
         support_size_sweep=args.support_size_sweep,
         visualization_count=args.visualization_count,
         visualization_grid_size=args.visualization_grid_size,
+        encoder_type=args.encoder_type,
+        attention_heads=args.attention_heads,
+        attention_layers=args.attention_layers,
+        support_sweep_batches=args.support_sweep_batches,
         device=args.device,
         seed=args.seed,
     )

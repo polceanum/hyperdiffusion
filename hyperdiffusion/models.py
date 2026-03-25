@@ -20,7 +20,6 @@ class TargetArchitecture:
     def shapes(self) -> Dict[str, Tuple[int, ...]]:
         if self.depth < 2:
             raise ValueError("Target architecture depth must be at least 2.")
-
         shapes: Dict[str, Tuple[int, ...]] = {
             "w1": (self.hidden_dim, self.in_dim),
             "b1": (self.hidden_dim,),
@@ -61,6 +60,87 @@ class DeepSetEncoder(nn.Module):
         h = torch.cat([support_x, support_y], dim=-1)
         h = self.item_mlp(h)
         pooled = h.mean(dim=1)
+        context = self.context_mlp(pooled)
+        latent = self.latent_mlp(context)
+        return context, latent
+
+
+class AttentionSetBlock(nn.Module):
+    def __init__(self, dim: int, num_heads: int, mlp_ratio: float = 2.0, dropout: float = 0.0):
+        super().__init__()
+        self.norm1 = nn.LayerNorm(dim)
+        self.attn = nn.MultiheadAttention(dim, num_heads=num_heads, dropout=dropout, batch_first=True)
+        self.norm2 = nn.LayerNorm(dim)
+        hidden = int(dim * mlp_ratio)
+        self.mlp = nn.Sequential(
+            nn.Linear(dim, hidden),
+            nn.GELU(),
+            nn.Linear(hidden, dim),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        h = self.norm1(x)
+        attn_out, _ = self.attn(h, h, h, need_weights=False)
+        x = x + attn_out
+        x = x + self.mlp(self.norm2(x))
+        return x
+
+
+class AttentionPool(nn.Module):
+    def __init__(self, dim: int, num_heads: int):
+        super().__init__()
+        self.query = nn.Parameter(torch.randn(1, 1, dim) * 0.02)
+        self.norm_q = nn.LayerNorm(dim)
+        self.norm_kv = nn.LayerNorm(dim)
+        self.attn = nn.MultiheadAttention(dim, num_heads=num_heads, batch_first=True)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        b = x.shape[0]
+        q = self.query.expand(b, -1, -1)
+        pooled, _ = self.attn(self.norm_q(q), self.norm_kv(x), self.norm_kv(x), need_weights=False)
+        return pooled[:, 0]
+
+
+class AttentionSetEncoder(nn.Module):
+    def __init__(
+        self,
+        x_dim: int = 2,
+        y_dim: int = 1,
+        hidden_dim: int = 128,
+        cond_dim: int = 64,
+        latent_dim: int = 32,
+        num_heads: int = 4,
+        num_layers: int = 3,
+        dropout: float = 0.0,
+    ):
+        super().__init__()
+        self.item_proj = nn.Sequential(
+            nn.Linear(x_dim + y_dim, hidden_dim),
+            nn.GELU(),
+            nn.Linear(hidden_dim, hidden_dim),
+        )
+        self.layers = nn.ModuleList([
+            AttentionSetBlock(hidden_dim, num_heads=num_heads, dropout=dropout) for _ in range(num_layers)
+        ])
+        self.pool = AttentionPool(hidden_dim, num_heads=num_heads)
+        self.context_mlp = nn.Sequential(
+            nn.LayerNorm(hidden_dim),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.GELU(),
+            nn.Linear(hidden_dim, cond_dim),
+        )
+        self.latent_mlp = nn.Sequential(
+            nn.Linear(cond_dim, hidden_dim),
+            nn.GELU(),
+            nn.Linear(hidden_dim, latent_dim),
+        )
+
+    def forward(self, support_x: torch.Tensor, support_y: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        h = torch.cat([support_x, support_y], dim=-1)
+        h = self.item_proj(h)
+        for layer in self.layers:
+            h = layer(h)
+        pooled = self.pool(h)
         context = self.context_mlp(pooled)
         latent = self.latent_mlp(context)
         return context, latent
@@ -118,9 +198,32 @@ class DiffusionDenoiser(nn.Module):
 
 
 class HyperNetworkSystem(nn.Module):
-    def __init__(self, arch: TargetArchitecture, cond_dim: int = 64, latent_dim: int = 32, encoder_hidden: int = 128, decoder_hidden: int = 256):
+    def __init__(
+        self,
+        arch: TargetArchitecture,
+        cond_dim: int = 64,
+        latent_dim: int = 32,
+        encoder_hidden: int = 128,
+        decoder_hidden: int = 256,
+        encoder_type: str = "attention",
+        attention_heads: int = 4,
+        attention_layers: int = 3,
+    ):
         super().__init__()
-        self.encoder = DeepSetEncoder(hidden_dim=encoder_hidden, cond_dim=cond_dim, latent_dim=latent_dim)
+        encoder_type = encoder_type.lower()
+        if encoder_type == "attention":
+            self.encoder = AttentionSetEncoder(
+                hidden_dim=encoder_hidden,
+                cond_dim=cond_dim,
+                latent_dim=latent_dim,
+                num_heads=attention_heads,
+                num_layers=attention_layers,
+            )
+        elif encoder_type == "deepset":
+            self.encoder = DeepSetEncoder(hidden_dim=encoder_hidden, cond_dim=cond_dim, latent_dim=latent_dim)
+        else:
+            raise ValueError(f"Unknown encoder_type: {encoder_type}")
+        self.encoder_type = encoder_type
         self.decoder = HyperDecoder(arch=arch, latent_dim=latent_dim, cond_dim=cond_dim, hidden_dim=decoder_hidden)
 
     def encode(self, support_x: torch.Tensor, support_y: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
