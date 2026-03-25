@@ -28,11 +28,76 @@ out.parent.mkdir(parents=True, exist_ok=True)
 plt.savefig(out)
 plt.close()
 
-# Generate annex.tex
+# Uncertainty summary plot (regression / bandit)
+unc = data.get("overall", {})
+if any(key in unc for key in ["uncertainty_mean", "uncertainty_error_correlation"]):
+    plt.figure(figsize=(6, 4))
+    metrics = [
+        ("uncertainty_mean", unc.get("uncertainty_mean")),
+        ("uncertainty_error_correlation", unc.get("uncertainty_error_correlation")),
+        ("uncertainty_on_high_error_points", unc.get("uncertainty_on_high_error_points")),
+        ("uncertainty_on_low_error_points", unc.get("uncertainty_on_low_error_points")),
+    ]
+    names = [name for name, val in metrics if val is not None]
+    vals = [val for name, val in metrics if val is not None]
+    if vals:
+        plt.bar(names, vals)
+        plt.xticks(rotation=30, ha='right')
+        plt.title('Uncertainty Diagnostics')
+        plt.tight_layout()
+        out = root / "figures/plots/uncertainty_summary.png"
+        plt.savefig(out)
+        plt.close()
+
+# Adaptation curve plot via support size sweep (if available)
+if sweep:
+    plt.figure(figsize=(6, 4))
+    xs = sorted(int(k) for k in sweep.keys())
+    variant = "diffusion_r2_mean" if any(s.get("diffusion_r2_mean") is not None for s in sweep.values()) else "diffusion_acc_mean"
+    selected = [sweep[str(k)].get(variant) for k in xs if sweep[str(k)].get(variant) is not None]
+    if selected:
+        plt.plot(xs[:len(selected)], selected, marker='o', label='diffusion mean')
+        plt.title('Adaptation Curve (support size sweep)')
+        plt.xlabel('Support size')
+        plt.ylabel('Metric')
+        plt.legend()
+        out = root / "figures/plots/adaptation_curve.png"
+        plt.savefig(out)
+        plt.close()
+
+# Generate annex.tex with better captions
 annex_path = root / "sections" / "annex.tex"
 pngs = sorted((root / "figures" / "plots").glob("*.png"))
+
+# Map filenames to descriptive captions
+caption_map = {
+    "support_sweep.png": "Support Size Sweep: Performance vs. number of support examples",
+    "adaptation_curve.png": "Adaptation Curve: Model performance across different support set sizes",
+    "uncertainty_summary.png": "Uncertainty Diagnostics: Summary of uncertainty metrics for current experiment",
+}
+
+# Default caption generator for plots
+def get_caption(filename):
+    if filename in caption_map:
+        return caption_map[filename]
+    
+    # Parse train/eval plots
+    parts = filename.replace('.png', '').split('_')
+    if len(parts) >= 3:
+        plot_type, idx, family = parts[0], parts[1], '_'.join(parts[2:])
+        family_name = family.replace('_', ' ').title()
+        
+        if plot_type == 'train':
+            return f"Training Example {int(idx)+1}: {family_name} task with support (orange) and query (gray) points"
+        elif plot_type == 'eval':
+            return f"Evaluation Example {int(idx)+1}: {family_name} task generalization performance"
+    
+    # Fallback
+    name = filename.replace('_', ' ').replace('.png', '').title()
+    return f"{name}"
+
 with open(annex_path, "w") as f:
     f.write("\\section{Annex: Diagnostic Plots}\n\n")
     for png in pngs:
-        name = png.stem.replace("_", " ").title()
-        f.write(f"\\begin{{figure}}[h]\n\\centering\n\\includegraphics[width=0.8\\linewidth]{{figures/plots/{png.name}}}\n\\caption{{{name}}}\n\\end{{figure}}\n\n")
+        caption = get_caption(png.name)
+        f.write(f"\\begin{{figure}}[h]\n\\centering\n\\includegraphics[width=0.8\\linewidth]{{figures/plots/{png.name}}}\n\\caption{{{caption}}}\n\\end{{figure}}\n\n")

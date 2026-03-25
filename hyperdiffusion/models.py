@@ -197,6 +197,26 @@ class DiffusionDenoiser(nn.Module):
         return self.out(h)
 
 
+class CandidateSelector(nn.Module):
+    def __init__(self, cond_dim: int = 64, latent_dim: int = 32, hidden_dim: int = 128):
+        super().__init__()
+        self.scorer = nn.Sequential(
+            nn.Linear(cond_dim + latent_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, 1),
+        )
+
+    def forward(self, context: torch.Tensor, z_candidates: torch.Tensor) -> torch.Tensor:
+        # context: (b, cond_dim), z_candidates: (b, k, latent_dim)
+        b, k, d = z_candidates.shape
+        context_exp = context.unsqueeze(1).expand(-1, k, -1)
+        x = torch.cat([context_exp, z_candidates], dim=-1).reshape(b * k, -1)
+        scores = self.scorer(x).view(b, k)
+        return scores
+
+
 class HyperNetworkSystem(nn.Module):
     def __init__(
         self,

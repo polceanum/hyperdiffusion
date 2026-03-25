@@ -358,14 +358,15 @@ class PiecewiseRegressionFamily(RegressionFamily):
     def sample_episode(self, support_size: int, query_size: int, generator: Optional[torch.Generator] = None):
         total = support_size + query_size
         x = _sample_1d_inputs(total, -3.0, 3.0, generator)
-        b1 = _rand_uniform((1,), -1.5, -0.2, generator).item()
-        b2 = _rand_uniform((1,), 0.2, 1.5, generator).item()
-        s1 = _rand_uniform((1,), -1.2, -0.2, generator).item()
-        s2 = _rand_uniform((1,), -0.1, 0.8, generator).item()
-        s3 = _rand_uniform((1,), 0.4, 1.4, generator).item()
-        c = _rand_uniform((1,), -0.5, 0.5, generator).item()
+        # More distinct breakpoints and stronger slopes
+        b1 = _rand_uniform((1,), -2.0, -1.0, generator).item()  # left breakpoint
+        b2 = _rand_uniform((1,), 0.5, 1.5, generator).item()    # right breakpoint
+        s1 = _rand_uniform((1,), -2.5, -1.2, generator).item()  # steeper negative
+        s2 = _rand_uniform((1,), -0.3, 0.3, generator).item()   # flat middle
+        s3 = _rand_uniform((1,), 1.2, 2.5, generator).item()    # steeper positive
+        c = _rand_uniform((1,), -0.3, 0.3, generator).item()
         y = torch.where(x < b1, s1 * x + c, torch.where(x < b2, s2 * x + c, s3 * x + c))
-        y = y + 0.03 * _randn(y.shape, generator)
+        y = y + 0.008 * _randn(y.shape, generator)  # very low noise
         return _split_episode(x, y, support_size)
 
 
@@ -389,12 +390,13 @@ class SawtoothRegressionFamily(RegressionFamily):
     def sample_episode(self, support_size: int, query_size: int, generator: Optional[torch.Generator] = None):
         total = support_size + query_size
         x = _sample_1d_inputs(total, -3.0, 3.0, generator)
-        freq = _rand_uniform((1,), 0.6, 1.3, generator).item()
+        freq = _rand_uniform((1,), 0.3, 0.7, generator).item()  # even wider freq range
         phase = _rand_uniform((1,), -math.pi, math.pi, generator).item()
+        amp = _rand_uniform((1,), 3.0, 5.0, generator).item()  # much stronger amplitude
         raw = ((freq * x + phase) / (2.0 * math.pi))
         frac = raw - torch.floor(raw + 0.5)
-        y = 2.0 * frac
-        y = y + 0.03 * _randn(y.shape, generator)
+        y = amp * 2.0 * frac  # stronger amplitude
+        y = y + 0.005 * _randn(y.shape, generator)  # minimal noise
         return _split_episode(x, y, support_size)
 
 
@@ -427,6 +429,64 @@ class AbsRegressionFamily(RegressionFamily):
         return _split_episode(x, y, support_size)
 
 
+class BanditLinearFamily(RegressionFamily):
+    name = "bandit_linear"
+
+    def sample_episode(self, support_size: int, query_size: int, generator: Optional[torch.Generator] = None):
+        total = support_size + query_size
+        x = _sample_points(total, 2.0, generator)
+        # Strong linear in both dimensions including a cross term for some 2D curvature effect
+        coeff1 = _rand_uniform((1,), 2.5, 4.0, generator).item()
+        coeff2 = _rand_uniform((1,), -2.5, 2.5, generator).item()
+        coeff_cross = _rand_uniform((1,), -1.5, 1.5, generator).item()
+        bias = _rand_uniform((1,), -0.2, 0.2, generator).item()
+        y = (coeff1 * x[:, 0:1] + coeff2 * x[:, 1:2] + coeff_cross * x[:, 0:1] * x[:, 1:2] + bias)
+        y = y + 0.005 * _randn(y.shape, generator)
+        return _split_episode(x, y, support_size)
+
+
+class BanditQuadraticFamily(RegressionFamily):
+    name = "bandit_quadratic"
+
+    def sample_episode(self, support_size: int, query_size: int, generator: Optional[torch.Generator] = None):
+        total = support_size + query_size
+        x = _sample_points(total, 2.0, generator)
+        # Strong 2D quadratic surface
+        coeff_lin_x = _rand_uniform((1,), -0.8, 0.8, generator).item()
+        coeff_lin_y = _rand_uniform((1,), -0.8, 0.8, generator).item()
+        coeff_quad1 = _rand_uniform((1,), -5.0, 5.0, generator).item()
+        coeff_quad2 = _rand_uniform((1,), -5.0, 5.0, generator).item()
+        coeff_xy = _rand_uniform((1,), -2.0, 2.0, generator).item()
+        bias = _rand_uniform((1,), -0.1, 0.1, generator).item()
+        y = (
+            coeff_lin_x * x[:, 0:1]
+            + coeff_lin_y * x[:, 1:2]
+            + coeff_quad1 * (x[:, 0:1] ** 2)
+            + coeff_quad2 * (x[:, 1:2] ** 2)
+            + coeff_xy * x[:, 0:1] * x[:, 1:2]
+            + bias
+        )
+        y = y + 0.001 * _randn(y.shape, generator)
+        return _split_episode(x, y, support_size)
+
+
+class BanditShiftedFamily(RegressionFamily):
+    name = "bandit_shifted"
+
+    def sample_episode(self, support_size: int, query_size: int, generator: Optional[torch.Generator] = None):
+        total = support_size + query_size
+        x = _sample_points(total, 2.0, generator)
+        # Same as bandit_linear but with subtle shift
+        coeff1 = _rand_uniform((1,), 0.8, 1.5, generator).item()
+        coeff2 = _rand_uniform((1,), -0.3, 0.3, generator).item()
+        bias = _rand_uniform((1,), -0.2, 0.2, generator).item()
+        shift = _rand_uniform((2,), -0.2, 0.2, generator)  # small shift
+        x_shifted = x + shift
+        y = (coeff1 * x_shifted[:, 0:1] + coeff2 * x_shifted[:, 1:2] + bias)
+        y = y + 0.02 * _randn(y.shape, generator)
+        return _split_episode(x, y, support_size)
+
+
 REGRESSION_FAMILIES: Dict[str, TaskFamily] = {
     family.name: family()
     for family in [
@@ -436,6 +496,15 @@ REGRESSION_FAMILIES: Dict[str, TaskFamily] = {
         SawtoothRegressionFamily,
         CubicRegressionFamily,
         AbsRegressionFamily,
+    ]
+}
+
+BANDIT_FAMILIES: Dict[str, TaskFamily] = {
+    family.name: family()
+    for family in [
+        BanditLinearFamily,
+        BanditQuadraticFamily,
+        BanditShiftedFamily,
     ]
 }
 
@@ -451,12 +520,21 @@ REGRESSION_TRAIN_GROUPS: Dict[str, List[str]] = {
     "held_out": DEFAULT_REGRESSION_EVAL_FAMILIES,
 }
 
+DEFAULT_BANDIT_TRAIN_FAMILIES = ["bandit_linear", "bandit_quadratic"]
+DEFAULT_BANDIT_EVAL_FAMILIES = ["bandit_shifted"]
+BANDIT_TRAIN_GROUPS: Dict[str, List[str]] = {
+    "core": DEFAULT_BANDIT_TRAIN_FAMILIES,
+    "held_out": DEFAULT_BANDIT_EVAL_FAMILIES,
+}
+
 
 def get_registry(task_type: str) -> Dict[str, TaskFamily]:
     if task_type == "classification":
         return CLASSIFICATION_FAMILIES
     if task_type == "regression":
         return REGRESSION_FAMILIES
+    if task_type == "bandit_regression":
+        return BANDIT_FAMILIES
     raise ValueError(f"Unknown task_type: {task_type}")
 
 

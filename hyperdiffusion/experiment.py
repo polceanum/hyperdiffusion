@@ -15,8 +15,12 @@ import torch
 import torch.nn.functional as F
 
 from .diffusion import DiffusionSchedule, ddim_sample
-from .models import DiffusionDenoiser, HyperNetworkSystem, TargetArchitecture, functional_target_network
+from .models import CandidateSelector, DiffusionDenoiser, HyperNetworkSystem, TargetArchitecture, functional_target_network
 from .tasks import (
+    BANDIT_TRAIN_GROUPS,
+    BANDIT_TRAIN_GROUPS,
+    DEFAULT_BANDIT_EVAL_FAMILIES,
+    DEFAULT_BANDIT_TRAIN_FAMILIES,
     DEFAULT_REGRESSION_EVAL_FAMILIES,
     DEFAULT_REGRESSION_TRAIN_FAMILIES,
     DEFAULT_TRAIN_FAMILIES,
@@ -61,6 +65,10 @@ class ExperimentConfig:
     attention_heads: int = 4
     attention_layers: int = 3
     support_sweep_batches: int = 16
+    selector_enabled: bool = False
+    selector_hidden: int = 128
+    selector_lr: float = 1e-3
+    selector_num_samples: int = 8
     device: str = "cpu"
     seed: int = 0
 
@@ -90,7 +98,12 @@ class Experiment:
         (self.output_dir / "plots").mkdir(exist_ok=True)
 
         self.device = torch.device(config.device)
-        input_dim = 2 if config.task_type == "classification" else 1
+        if config.task_type == "classification":
+            input_dim = 2
+        elif config.task_type in ("regression", "bandit_regression"):
+            input_dim = 2 if config.task_type == "bandit_regression" else 1
+        else:
+            raise ValueError(f"Unknown task_type: {config.task_type}")
         self.arch = TargetArchitecture(in_dim=input_dim, hidden_dim=config.target_hidden_dim, depth=config.target_depth)
         self.system = HyperNetworkSystem(
             arch=self.arch,
@@ -111,6 +124,11 @@ class Experiment:
             depth=config.denoiser_depth,
         ).to(self.device)
         self.schedule = DiffusionSchedule(num_steps=config.num_diffusion_steps).to(self.device)
+
+        self.selector = None
+        if config.selector_enabled:
+            self.selector = CandidateSelector(cond_dim=config.cond_dim, latent_dim=config.latent_dim, hidden_dim=config.selector_hidden).to(self.device)
+            self.opt_selector = torch.optim.AdamW(self.selector.parameters(), lr=config.selector_lr)
 
         self.opt_stage1 = torch.optim.AdamW(self.system.parameters(), lr=config.learning_rate_stage1)
         self.opt_stage2 = torch.optim.AdamW(self.denoiser.parameters(), lr=config.learning_rate_stage2)
@@ -196,7 +214,35 @@ class Experiment:
 
         z0_hat = self.schedule.predict_z0(z_t, t_idx, pred_noise)
         rmse = (z0_hat - latent).pow(2).mean().sqrt().item()
-        return {"stage2_loss": loss.item(), "stage2_rmse": rmse}
+        result = {"stage2_loss": loss.item(), "stage2_rmse": rmse}
+
+        if self.selector is not None:
+            k = self.config.selector_num_samples
+            z_cands, pred_cands, metric_cands = [], [], []
+            with torch.no_grad():
+                for _ in range(k):
+                    z_temp = ddim_sample(self.denoiser, self.schedule, context, num_steps=self.config.num_diffusion_steps)
+                    preds_temp = functional_target_network(batch.query_x, self.system.decode(z_temp, context))
+                    metric_temp = self._item_metric(preds_temp, batch.query_y)
+                    z_cands.append(z_temp)
+                    metric_cands.append(metric_temp)
+
+            z_cands = torch.stack(z_cands, dim=1)
+            metric_cands = torch.stack(metric_cands, dim=1)
+            best_idx = metric_cands.argmax(dim=1)
+
+            scores = self.selector(context, z_cands)
+            selector_loss = F.cross_entropy(scores, best_idx)
+
+            self.opt_selector.zero_grad(set_to_none=True)
+            selector_loss.backward()
+            self.opt_selector.step()
+
+            result["selector_loss"] = selector_loss.item()
+        else:
+            result["selector_loss"] = 0.0
+
+        return result
 
     @staticmethod
     def _mean(values: List[float]) -> float:
@@ -240,9 +286,10 @@ class Experiment:
 
         per_family: Dict[str, Dict[str, List[float]]] = {}
         overall: Dict[str, List[float]] = {
-            "encoder_metric": [], "diffusion_metric": [], "encoder_loss": [], "diffusion_loss": [],
+            "encoder_metric": [], "diffusion_metric": [], "selector_metric": [], "encoder_loss": [], "diffusion_loss": [], "selector_loss": [],
             "diffusion_metric_mean_k": [], "diffusion_metric_best_k": [], "prediction_disagreement": [],
-            "weight_pairwise_l2": [], "latent_pairwise_l2": []
+            "weight_pairwise_l2": [], "latent_pairwise_l2": [],
+            "uncertainty_error_correlation": [], "uncertainty_mean": [], "uncertainty_on_high_error_points": [], "uncertainty_on_low_error_points": []
         }
 
         for _ in range(num_batches):
@@ -273,19 +320,64 @@ class Experiment:
             disagreement = self._prediction_disagreement(pred_stack)
             weight_l2 = self._pairwise_mean_l2(flat_stack)
             latent_l2 = self._pairwise_mean_l2(z_stack)
+            b = metric_stack.shape[0]
+
+            if self.selector is not None:
+                scores = self.selector(context, z_stack)
+                selected_idx = scores.argmax(dim=1)
+                selected_metric = metric_stack[torch.arange(b), selected_idx]
+                selected_pred = pred_stack[torch.arange(b), selected_idx]
+            else:
+                selected_idx = torch.zeros(b, dtype=torch.long, device=self.device)
+                selected_metric = metric_diff
+                selected_pred = pred_stack[:, 0]
+
+            if self.config.task_type in ("regression", "bandit_regression"):
+                pred_mean = pred_stack.mean(dim=1)
+                pred_var = pred_stack.var(dim=1, unbiased=False)
+                se_mean = (pred_mean - batch.query_y).pow(2)
+                mean_uncertainty = pred_var.mean(dim=(1, 2))
+                mean_error = se_mean.mean(dim=(1, 2))
+                cov = ((mean_uncertainty - mean_uncertainty.mean()) * (mean_error - mean_error.mean())).mean()
+                denom = mean_uncertainty.std(unbiased=False) * mean_error.std(unbiased=False) + 1e-8
+                uncertainty_error_correlation = float(cov / denom)
+                flat_err = se_mean.view(-1)
+                flat_unc = pred_var.view(-1)
+                if flat_err.numel() > 0:
+                    high_cut = flat_err.quantile(0.75)
+                    low_cut = flat_err.quantile(0.25)
+                    high_mask = flat_err >= high_cut
+                    low_mask = flat_err <= low_cut
+                    uncertainty_on_high_error_points = float(flat_unc[high_mask].mean()) if high_mask.any() else 0.0
+                    uncertainty_on_low_error_points = float(flat_unc[low_mask].mean()) if low_mask.any() else 0.0
+                else:
+                    uncertainty_on_high_error_points = 0.0
+                    uncertainty_on_low_error_points = 0.0
+                uncertainty_mean = float(mean_uncertainty.mean())
+            else:
+                uncertainty_error_correlation = 0.0
+                uncertainty_mean = 0.0
+                uncertainty_on_high_error_points = 0.0
+                uncertainty_on_low_error_points = 0.0
 
             for idx, family in enumerate(batch.family_name):
                 fam = per_family.setdefault(family, {k: [] for k in overall})
                 vals = {
                     "encoder_metric": metric_enc[idx].item(),
                     "diffusion_metric": metric_diff[idx].item(),
+                    "selector_metric": selected_metric[idx].item(),
                     "encoder_loss": loss_enc[idx].item(),
                     "diffusion_loss": loss_diff[idx].item(),
+                    "selector_loss": 0.0,
                     "diffusion_metric_mean_k": metric_mean[idx].item(),
                     "diffusion_metric_best_k": metric_best[idx].item(),
                     "prediction_disagreement": disagreement[idx].item(),
                     "weight_pairwise_l2": weight_l2[idx].item(),
                     "latent_pairwise_l2": latent_l2[idx].item(),
+                    "uncertainty_error_correlation": uncertainty_error_correlation,
+                    "uncertainty_mean": uncertainty_mean,
+                    "uncertainty_on_high_error_points": uncertainty_on_high_error_points,
+                    "uncertainty_on_low_error_points": uncertainty_on_low_error_points,
                 }
                 for k, v in vals.items():
                     overall[k].append(v)
@@ -293,17 +385,24 @@ class Experiment:
 
         metric_name = self._metric_name()
         def pack(values: Dict[str, List[float]]) -> Dict[str, float]:
-            return {
+            packed = {
                 f"encoder_{metric_name}": self._mean(values["encoder_metric"]),
                 f"diffusion_{metric_name}": self._mean(values["diffusion_metric"]),
+                f"selector_{metric_name}": self._mean(values.get("selector_metric", [])) if values.get("selector_metric") else 0.0,
                 "encoder_loss": self._mean(values["encoder_loss"]),
                 "diffusion_loss": self._mean(values["diffusion_loss"]),
+                "selector_loss": self._mean(values.get("selector_loss", [])) if values.get("selector_loss") else 0.0,
                 f"diffusion_{metric_name}_mean_k": self._mean(values["diffusion_metric_mean_k"]),
                 f"diffusion_{metric_name}_best_k": self._mean(values["diffusion_metric_best_k"]),
                 "prediction_disagreement": self._mean(values["prediction_disagreement"]),
                 "weight_pairwise_l2": self._mean(values["weight_pairwise_l2"]),
                 "latent_pairwise_l2": self._mean(values["latent_pairwise_l2"]),
+                "uncertainty_error_correlation": self._mean(values.get("uncertainty_error_correlation", [])) if values.get("uncertainty_error_correlation") else 0.0,
+                "uncertainty_mean": self._mean(values.get("uncertainty_mean", [])) if values.get("uncertainty_mean") else 0.0,
+                "uncertainty_on_high_error_points": self._mean(values.get("uncertainty_on_high_error_points", [])) if values.get("uncertainty_on_high_error_points") else 0.0,
+                "uncertainty_on_low_error_points": self._mean(values.get("uncertainty_on_low_error_points", [])) if values.get("uncertainty_on_low_error_points") else 0.0,
             }
+            return packed
 
         summary = {
             "overall": pack(overall),
@@ -315,6 +414,7 @@ class Experiment:
             "baseline_comparison": {
                 "deterministic_encoder": {metric_name: pack(overall)[f"encoder_{metric_name}"], "loss": pack(overall)["encoder_loss"]},
                 "diffusion_sampler": {metric_name: pack(overall)[f"diffusion_{metric_name}"], "loss": pack(overall)["diffusion_loss"]},
+                "selector": {metric_name: pack(overall)[f"selector_{metric_name}"], "loss": pack(overall)["selector_loss"]},
             },
         }
         return summary
@@ -422,53 +522,125 @@ class Experiment:
         paths: List[str] = []
         context, latent = self.system.encode(batch.support_x, batch.support_y)
         b = batch.support_x.shape[0]
-        grid_x = torch.linspace(-3.2, 3.2, 256, device=self.device).view(1, -1, 1).expand(b, -1, -1)
-        enc_curve = functional_target_network(grid_x, self.system.decode(latent, context))
-        pred_enc = functional_target_network(batch.query_x, self.system.decode(latent, context))
-        metric_enc = self._item_metric(pred_enc, batch.query_y)
+        input_dim = batch.support_x.shape[-1]
+        
+        if input_dim == 1:
+            # 1D regression - use line plots
+            grid_x = torch.linspace(-3.2, 3.2, 256, device=self.device).view(1, -1, 1).expand(b, -1, -1)
+            
+            enc_curve = functional_target_network(grid_x, self.system.decode(latent, context))
+            pred_enc = functional_target_network(batch.query_x, self.system.decode(latent, context))
+            metric_enc = self._item_metric(pred_enc, batch.query_y)
 
-        curve_list, metric_list = [], []
-        for _ in range(self.config.diagnostic_samples):
-            z = ddim_sample(self.denoiser, self.schedule, context, num_steps=self.config.num_diffusion_steps)
-            params = self.system.decode(z, context)
-            curve_list.append(functional_target_network(grid_x, params))
-            metric_list.append(self._item_metric(functional_target_network(batch.query_x, params), batch.query_y))
-        curve_stack = torch.stack(curve_list, dim=1)
-        metric_stack = torch.stack(metric_list, dim=1)
-        best_idx = metric_stack.argmax(dim=1)
-        best_curve = curve_stack[torch.arange(b, device=self.device), best_idx]
-        mean_curve = curve_stack.mean(dim=1)
-        std_curve = curve_stack.std(dim=1)
+            curve_list, metric_list = [], []
+            for _ in range(self.config.diagnostic_samples):
+                z = ddim_sample(self.denoiser, self.schedule, context, num_steps=self.config.num_diffusion_steps)
+                params = self.system.decode(z, context)
+                curve_list.append(functional_target_network(grid_x, params))
+                metric_list.append(self._item_metric(functional_target_network(batch.query_x, params), batch.query_y))
+            curve_stack = torch.stack(curve_list, dim=1)
+            metric_stack = torch.stack(metric_list, dim=1)
+            best_idx = metric_stack.argmax(dim=1)
+            best_curve = curve_stack[torch.arange(b, device=self.device), best_idx]
+            mean_curve = curve_stack.mean(dim=1)
+            std_curve = curve_stack.std(dim=1)
 
-        for i in range(b):
-            fig, axes = plt.subplots(1, 4, figsize=(16, 4), constrained_layout=True)
-            xg = grid_x[i, :, 0].cpu().numpy()
-            support_x = batch.support_x[i, :, 0].cpu().numpy()
-            support_y = batch.support_y[i, :, 0].cpu().numpy()
-            query_x = batch.query_x[i, :, 0].cpu().numpy()
-            query_y = batch.query_y[i, :, 0].cpu().numpy()
-            panels = [
-                (enc_curve[i, :, 0].cpu().numpy(), f"encoder r2={metric_enc[i].item():.3f}"),
-                (best_curve[i, :, 0].cpu().numpy(), f"best r2={metric_stack[i, best_idx[i]].item():.3f}"),
-                (mean_curve[i, :, 0].cpu().numpy(), "diffusion mean"),
-                (std_curve[i, :, 0].cpu().numpy(), "sample std"),
-            ]
-            for ax, (curve, title) in zip(axes, panels):
-                ax.scatter(query_x, query_y, s=10, alpha=0.25, color="tab:gray")
-                ax.scatter(support_x, support_y, s=28, color="tab:orange", edgecolors="black", linewidths=0.5)
-                ax.plot(xg, curve)
-                ax.set_title(title)
-            fig.suptitle(f"{prefix} | family={batch.family_name[i]}")
-            out = self.output_dir / "plots" / f"{prefix}_{i:02d}_{batch.family_name[i]}.png"
-            fig.savefig(out, dpi=140); plt.close(fig)
-            paths.append(str(out.relative_to(self.output_dir)))
+            for i in range(b):
+                fig, axes = plt.subplots(1, 4, figsize=(16, 4), constrained_layout=True)
+                xg = grid_x[i, :, 0].cpu().numpy()
+                support_x = batch.support_x[i, :, 0].cpu().numpy()
+                support_y = batch.support_y[i, :, 0].cpu().numpy()
+                query_x = batch.query_x[i, :, 0].cpu().numpy()
+                query_y = batch.query_y[i, :, 0].cpu().numpy()
+                panels = [
+                    (enc_curve[i, :, 0].cpu().numpy(), f"encoder r2={metric_enc[i].item():.3f}"),
+                    (best_curve[i, :, 0].cpu().numpy(), f"best r2={metric_stack[i, best_idx[i]].item():.3f}"),
+                    (mean_curve[i, :, 0].cpu().numpy(), "diffusion mean"),
+                    (std_curve[i, :, 0].cpu().numpy(), "sample std"),
+                ]
+                for ax, (curve, title) in zip(axes, panels):
+                    ax.scatter(query_x, query_y, s=10, alpha=0.25, color="tab:gray")
+                    ax.scatter(support_x, support_y, s=28, color="tab:orange", edgecolors="black", linewidths=0.5)
+                    ax.plot(xg, curve)
+                    ax.set_title(title)
+                fig.suptitle(f"{prefix} | family={batch.family_name[i]}")
+                out = self.output_dir / "plots" / f"{prefix}_{i:02d}_{batch.family_name[i]}.png"
+                fig.savefig(out, dpi=140); plt.close(fig)
+                paths.append(str(out.relative_to(self.output_dir)))
+        else:
+            # 2D regression (bandit tasks) - use contour plots
+            grid_size = self.config.visualization_grid_size
+            grid_lin = torch.linspace(-2.5, 2.5, grid_size, device=self.device)
+            gx, gy = torch.meshgrid(grid_lin, grid_lin, indexing="ij")
+            grid_2d = torch.stack([gx.reshape(-1), gy.reshape(-1)], dim=-1).unsqueeze(0).expand(b, -1, -1)
+
+            enc_surface = functional_target_network(grid_2d, self.system.decode(latent, context)).reshape(b, grid_size, grid_size)
+            pred_enc = functional_target_network(batch.query_x, self.system.decode(latent, context))
+            metric_enc = self._item_metric(pred_enc, batch.query_y)
+
+            surface_list, metric_list = [], []
+            for _ in range(self.config.diagnostic_samples):
+                z = ddim_sample(self.denoiser, self.schedule, context, num_steps=self.config.num_diffusion_steps)
+                params = self.system.decode(z, context)
+                surface_list.append(functional_target_network(grid_2d, params).reshape(b, grid_size, grid_size))
+                metric_list.append(self._item_metric(functional_target_network(batch.query_x, params), batch.query_y))
+
+            surface_stack = torch.stack(surface_list, dim=1)
+            metric_stack = torch.stack(metric_list, dim=1)
+            best_idx = metric_stack.argmax(dim=1)
+            best_surface = surface_stack[torch.arange(b, device=self.device), best_idx]
+            mean_surface = surface_stack.mean(dim=1)
+            std_surface = surface_stack.std(dim=1)
+
+            global_vmin = torch.cat([enc_surface.flatten(), best_surface.flatten(), mean_surface.flatten()]).min().item()
+            global_vmax = torch.cat([enc_surface.flatten(), best_surface.flatten(), mean_surface.flatten()]).max().item()
+            std_vmax = std_surface.max().item() if std_surface.numel() > 0 else 1.0
+
+            for i in range(b):
+                fig, axes = plt.subplots(2, 2, figsize=(14, 10), constrained_layout=True)
+                support_x = batch.support_x[i, :, 0].cpu().numpy()
+                support_y = batch.support_x[i, :, 1].cpu().numpy()
+                support_z = batch.support_y[i, :, 0].cpu().numpy()
+                query_x = batch.query_x[i, :, 0].cpu().numpy()
+                query_y = batch.query_x[i, :, 1].cpu().numpy()
+                query_z = batch.query_y[i, :, 0].cpu().numpy()
+
+                surfaces = [
+                    (enc_surface[i].cpu().numpy(), f"encoder r2={metric_enc[i].item():.3f}"),
+                    (best_surface[i].cpu().numpy(), f"best r2={metric_stack[i, best_idx[i]].item():.3f}"),
+                    (mean_surface[i].cpu().numpy(), "diffusion mean"),
+                    (std_surface[i].cpu().numpy(), "sample std"),
+                ]
+
+                for ax, (surface, title) in zip(axes.flat, surfaces):
+                    if title == "sample std":
+                        img = ax.imshow(surface, origin="lower", extent=(-2.5, 2.5, -2.5, 2.5), cmap="viridis", vmin=0.0, vmax=std_vmax, aspect="equal")
+                    else:
+                        img = ax.imshow(surface, origin="lower", extent=(-2.5, 2.5, -2.5, 2.5), cmap="viridis", vmin=global_vmin, vmax=global_vmax, aspect="equal")
+                    ax.contour(surface, levels=12, colors="k", linewidths=0.6, extent=(-2.5, 2.5, -2.5, 2.5), alpha=0.6)
+                    ax.scatter(support_x, support_y, c=support_z, s=70, edgecolors="red", linewidth=1.2, cmap="RdYlBu", vmin=global_vmin, vmax=global_vmax)
+                    ax.scatter(query_x, query_y, c=query_z, s=30, alpha=0.7, marker="x", cmap="RdYlBu", vmin=global_vmin, vmax=global_vmax)
+                    ax.set_title(title)
+                    ax.set_xlabel("x₁")
+                    ax.set_ylabel("x₂")
+                    fig.colorbar(img, ax=ax, shrink=0.72)
+
+                fig.suptitle(f"{prefix} | family={batch.family_name[i]}")
+                out = self.output_dir / "plots" / f"{prefix}_{i:02d}_{batch.family_name[i]}.png"
+                fig.savefig(out, dpi=140); plt.close(fig)
+                paths.append(str(out.relative_to(self.output_dir)))
+
         return paths
 
     def _group_evaluations(self) -> Dict[str, object]:
         if self.config.task_type == "classification":
             groups = ORIGINAL_TRAIN_GROUPS
-        else:
+        elif self.config.task_type == "regression":
             groups = REGRESSION_TRAIN_GROUPS
+        elif self.config.task_type == "bandit_regression":
+            groups = BANDIT_TRAIN_GROUPS
+        else:
+            groups = {}
         configured = set(self.config.families)
         out: Dict[str, object] = {}
         for name, fams in groups.items():
@@ -484,15 +656,17 @@ class Experiment:
     def run(self) -> Dict[str, object]:
         stage1 = MetricsTracker(); stage2 = MetricsTracker(); t0 = time.time()
         metric_name = self._metric_name()
+        log_freq = max(1, self.config.train_steps_stage1 // 5)
         for step in range(1, self.config.train_steps_stage1 + 1):
             metrics = self.stage1_step(self.sample_batch())
             stage1.update(**metrics)
-            if step % 100 == 0 or step == 1:
+            if step % log_freq == 0 or step == 1:
                 print(f"[stage1] step={step:4d} loss={stage1.mean_last('stage1_loss',20):.4f} {metric_name}={stage1.mean_last(f'stage1_{metric_name}',20):.3f} latent_norm={stage1.mean_last('latent_norm',20):.3f}")
+        log_freq = max(1, self.config.train_steps_stage2 // 5)
         for step in range(1, self.config.train_steps_stage2 + 1):
             metrics = self.stage2_step(self.sample_batch())
             stage2.update(**metrics)
-            if step % 100 == 0 or step == 1:
+            if step % log_freq == 0 or step == 1:
                 print(f"[stage2] step={step:4d} loss={stage2.mean_last('stage2_loss',20):.4f} z0_rmse={stage2.mean_last('stage2_rmse',20):.4f}")
 
         summary = self.evaluate()
@@ -527,7 +701,7 @@ def export_latest_paper_results(summary):
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="Hyperdiffusion toy experiment")
     p.add_argument("--output-dir", type=str, default="runs/default")
-    p.add_argument("--task-type", type=str, choices=["classification", "regression"], default="classification")
+    p.add_argument("--task-type", type=str, choices=["classification", "regression", "bandit_regression"], default="classification")
     p.add_argument("--families", type=str, nargs="+", default=None)
     p.add_argument("--expanded-train-families", action="store_true")
     p.add_argument("--eval-families", type=str, nargs="*", default=None)
@@ -561,6 +735,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--attention-heads", type=int, default=4)
     p.add_argument("--attention-layers", type=int, default=3)
     p.add_argument("--support-sweep-batches", type=int, default=16)
+    p.add_argument("--selector-enabled", action="store_true", help="Enable learned candidate selector during training/eval")
+    p.add_argument("--selector-hidden", type=int, default=128)
+    p.add_argument("--selector-lr", type=float, default=1e-3)
+    p.add_argument("--selector-num-samples", type=int, default=8)
     return p
 
 
@@ -569,9 +747,14 @@ def main() -> None:
     if args.task_type == "classification":
         families = EXPANDED_TRAIN_FAMILIES if args.expanded_train_families else (args.families or DEFAULT_TRAIN_FAMILIES)
         eval_families = args.eval_families
-    else:
+    elif args.task_type == "regression":
         families = args.families or DEFAULT_REGRESSION_TRAIN_FAMILIES
         eval_families = args.eval_families if args.eval_families is not None else DEFAULT_REGRESSION_EVAL_FAMILIES
+    elif args.task_type == "bandit_regression":
+        families = args.families or DEFAULT_BANDIT_TRAIN_FAMILIES
+        eval_families = args.eval_families if args.eval_families is not None else DEFAULT_BANDIT_EVAL_FAMILIES
+    else:
+        raise ValueError(f"Unknown task_type: {args.task_type}")
 
     config = ExperimentConfig(
         task_type=args.task_type,
@@ -605,6 +788,10 @@ def main() -> None:
         attention_heads=args.attention_heads,
         attention_layers=args.attention_layers,
         support_sweep_batches=args.support_sweep_batches,
+        selector_enabled=args.selector_enabled,
+        selector_hidden=args.selector_hidden,
+        selector_lr=args.selector_lr,
+        selector_num_samples=args.selector_num_samples,
         device=args.device,
         seed=args.seed,
     )
