@@ -18,6 +18,8 @@ class EpisodeBatch:
 
 class TaskFamily:
     name: str
+    input_dim: int = 2
+    task_type: str = "classification"
 
     def sample_episode(
         self,
@@ -47,6 +49,10 @@ def _sample_points(total: int, scale: float = 2.0, generator: Optional[torch.Gen
 def _split_episode(x: torch.Tensor, y: torch.Tensor, support_size: int) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     return x[:support_size], y[:support_size], x[support_size:], y[support_size:]
 
+
+# ----------------------------
+# Classification families
+# ----------------------------
 
 class LinearFamily(TaskFamily):
     name = "linear"
@@ -134,18 +140,7 @@ class SpiralFamily(TaskFamily):
     name = "spiral"
 
     def sample_episode(self, support_size: int, query_size: int, generator: Optional[torch.Generator] = None):
-        total = support_size + query_size
-        t = _rand_uniform((total,), 0.3, 2.7 * math.pi, generator)
-        pitch = _rand_uniform((1,), 0.16, 0.28, generator).item()
-        arm_phase = _rand_uniform((1,), -math.pi, math.pi, generator).item()
-        arm = torch.randint(0, 2, (total,), generator=generator).float()
-        r = pitch * t + 0.08 * _randn((total,), generator)
-        angle = t + arm * math.pi + arm_phase
-        x = torch.stack([r * torch.cos(angle), r * torch.sin(angle)], dim=-1)
-        x = x + 0.05 * _randn(x.shape, generator)
-        y = arm.unsqueeze(-1)
-        perm = torch.randperm(total, generator=generator)
-        return _split_episode(x[perm], y[perm], support_size)
+        return _sample_spiral_family(support_size, query_size, generator, max_turns=2.7, pitch_low=0.16, pitch_high=0.28, noise_scale=0.08)
 
 
 class GaussianMixtureFamily(TaskFamily):
@@ -289,7 +284,7 @@ class SpiralHardFamily(TaskFamily):
         return _sample_spiral_family(support_size, query_size, generator, max_turns=2.2, pitch_low=0.18, pitch_high=0.28, noise_scale=0.06)
 
 
-FAMILIES: Dict[str, TaskFamily] = {
+CLASSIFICATION_FAMILIES: Dict[str, TaskFamily] = {
     family.name: family()
     for family in [
         LinearFamily,
@@ -311,7 +306,6 @@ FAMILIES: Dict[str, TaskFamily] = {
     ]
 }
 
-
 DEFAULT_TRAIN_FAMILIES = ["linear", "xor", "moons", "circles"]
 BRIDGE_FAMILIES = [
     "ellipse",
@@ -324,14 +318,146 @@ BRIDGE_FAMILIES = [
     "spiral_hard",
 ]
 EXPANDED_TRAIN_FAMILIES = DEFAULT_TRAIN_FAMILIES + BRIDGE_FAMILIES
-ALL_FAMILIES = list(FAMILIES.keys())
-OOD_FAMILIES = [name for name in ALL_FAMILIES if name not in DEFAULT_TRAIN_FAMILIES]
-
-
 ORIGINAL_TRAIN_GROUPS: Dict[str, List[str]] = {
     "core": DEFAULT_TRAIN_FAMILIES,
     "bridges": BRIDGE_FAMILIES,
 }
+
+# ----------------------------
+# Regression families
+# ----------------------------
+
+
+def _sample_1d_inputs(total: int, low: float = -3.0, high: float = 3.0, generator: Optional[torch.Generator] = None) -> torch.Tensor:
+    return _rand_uniform((total, 1), low, high, generator)
+
+
+class RegressionFamily(TaskFamily):
+    input_dim: int = 1
+    task_type: str = "regression"
+
+
+class SineRegressionFamily(RegressionFamily):
+    name = "sine_regression"
+
+    def sample_episode(self, support_size: int, query_size: int, generator: Optional[torch.Generator] = None):
+        total = support_size + query_size
+        x = _sample_1d_inputs(total, -3.0, 3.0, generator)
+        amp = _rand_uniform((1,), 0.6, 1.4, generator).item()
+        freq = _rand_uniform((1,), 0.7, 1.7, generator).item()
+        phase = _rand_uniform((1,), -math.pi, math.pi, generator).item()
+        slope = _rand_uniform((1,), -0.25, 0.25, generator).item()
+        y = amp * torch.sin(freq * x + phase) + slope * x
+        y = y + 0.03 * _randn(y.shape, generator)
+        return _split_episode(x, y, support_size)
+
+
+class PiecewiseRegressionFamily(RegressionFamily):
+    name = "piecewise_regression"
+
+    def sample_episode(self, support_size: int, query_size: int, generator: Optional[torch.Generator] = None):
+        total = support_size + query_size
+        x = _sample_1d_inputs(total, -3.0, 3.0, generator)
+        b1 = _rand_uniform((1,), -1.5, -0.2, generator).item()
+        b2 = _rand_uniform((1,), 0.2, 1.5, generator).item()
+        s1 = _rand_uniform((1,), -1.2, -0.2, generator).item()
+        s2 = _rand_uniform((1,), -0.1, 0.8, generator).item()
+        s3 = _rand_uniform((1,), 0.4, 1.4, generator).item()
+        c = _rand_uniform((1,), -0.5, 0.5, generator).item()
+        y = torch.where(x < b1, s1 * x + c, torch.where(x < b2, s2 * x + c, s3 * x + c))
+        y = y + 0.03 * _randn(y.shape, generator)
+        return _split_episode(x, y, support_size)
+
+
+class QuadraticRegressionFamily(RegressionFamily):
+    name = "quadratic_regression"
+
+    def sample_episode(self, support_size: int, query_size: int, generator: Optional[torch.Generator] = None):
+        total = support_size + query_size
+        x = _sample_1d_inputs(total, -2.5, 2.5, generator)
+        a = _rand_uniform((1,), -0.3, 0.3, generator).item()
+        b = _rand_uniform((1,), -1.2, 1.2, generator).item()
+        c = _rand_uniform((1,), -0.6, 0.6, generator).item()
+        y = a * x.pow(2) + b * x + c
+        y = y + 0.03 * _randn(y.shape, generator)
+        return _split_episode(x, y, support_size)
+
+
+class SawtoothRegressionFamily(RegressionFamily):
+    name = "sawtooth_regression"
+
+    def sample_episode(self, support_size: int, query_size: int, generator: Optional[torch.Generator] = None):
+        total = support_size + query_size
+        x = _sample_1d_inputs(total, -3.0, 3.0, generator)
+        freq = _rand_uniform((1,), 0.6, 1.3, generator).item()
+        phase = _rand_uniform((1,), -math.pi, math.pi, generator).item()
+        raw = ((freq * x + phase) / (2.0 * math.pi))
+        frac = raw - torch.floor(raw + 0.5)
+        y = 2.0 * frac
+        y = y + 0.03 * _randn(y.shape, generator)
+        return _split_episode(x, y, support_size)
+
+
+class CubicRegressionFamily(RegressionFamily):
+    name = "cubic_regression"
+
+    def sample_episode(self, support_size: int, query_size: int, generator: Optional[torch.Generator] = None):
+        total = support_size + query_size
+        x = _sample_1d_inputs(total, -2.2, 2.2, generator)
+        a = _rand_uniform((1,), -0.15, 0.15, generator).item()
+        b = _rand_uniform((1,), -0.4, 0.4, generator).item()
+        c = _rand_uniform((1,), -1.0, 1.0, generator).item()
+        d = _rand_uniform((1,), -0.4, 0.4, generator).item()
+        y = a * x.pow(3) + b * x.pow(2) + c * x + d
+        y = y + 0.03 * _randn(y.shape, generator)
+        return _split_episode(x, y, support_size)
+
+
+class AbsRegressionFamily(RegressionFamily):
+    name = "abs_regression"
+
+    def sample_episode(self, support_size: int, query_size: int, generator: Optional[torch.Generator] = None):
+        total = support_size + query_size
+        x = _sample_1d_inputs(total, -3.0, 3.0, generator)
+        shift = _rand_uniform((1,), -0.8, 0.8, generator).item()
+        scale = _rand_uniform((1,), 0.6, 1.4, generator).item()
+        tilt = _rand_uniform((1,), -0.3, 0.3, generator).item()
+        y = scale * (x - shift).abs() + tilt * x
+        y = y + 0.03 * _randn(y.shape, generator)
+        return _split_episode(x, y, support_size)
+
+
+REGRESSION_FAMILIES: Dict[str, TaskFamily] = {
+    family.name: family()
+    for family in [
+        SineRegressionFamily,
+        PiecewiseRegressionFamily,
+        QuadraticRegressionFamily,
+        SawtoothRegressionFamily,
+        CubicRegressionFamily,
+        AbsRegressionFamily,
+    ]
+}
+
+DEFAULT_REGRESSION_TRAIN_FAMILIES = [
+    "sine_regression",
+    "piecewise_regression",
+    "quadratic_regression",
+    "sawtooth_regression",
+]
+DEFAULT_REGRESSION_EVAL_FAMILIES = ["cubic_regression", "abs_regression"]
+REGRESSION_TRAIN_GROUPS: Dict[str, List[str]] = {
+    "core": DEFAULT_REGRESSION_TRAIN_FAMILIES,
+    "held_out": DEFAULT_REGRESSION_EVAL_FAMILIES,
+}
+
+
+def get_registry(task_type: str) -> Dict[str, TaskFamily]:
+    if task_type == "classification":
+        return CLASSIFICATION_FAMILIES
+    if task_type == "regression":
+        return REGRESSION_FAMILIES
+    raise ValueError(f"Unknown task_type: {task_type}")
 
 
 def make_episode_batch(
@@ -340,7 +466,9 @@ def make_episode_batch(
     query_size: int,
     family_names: Iterable[str],
     generator: Optional[torch.Generator] = None,
+    task_type: str = "classification",
 ) -> EpisodeBatch:
+    registry = get_registry(task_type)
     selected = list(family_names)
     if not selected:
         raise ValueError("family_names must not be empty")
@@ -348,7 +476,7 @@ def make_episode_batch(
     support_x, support_y, query_x, query_y, names = [], [], [], [], []
     for _ in range(batch_size):
         idx = torch.randint(0, len(selected), (1,), generator=generator).item()
-        family = FAMILIES[selected[idx]]
+        family = registry[selected[idx]]
         sx, sy, qx, qy = family.sample_episode(support_size=support_size, query_size=query_size, generator=generator)
         support_x.append(sx)
         support_y.append(sy)

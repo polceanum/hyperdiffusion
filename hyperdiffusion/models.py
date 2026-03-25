@@ -208,11 +208,15 @@ class HyperNetworkSystem(nn.Module):
         encoder_type: str = "attention",
         attention_heads: int = 4,
         attention_layers: int = 3,
+        x_dim: int = 2,
+        y_dim: int = 1,
     ):
         super().__init__()
         encoder_type = encoder_type.lower()
         if encoder_type == "attention":
             self.encoder = AttentionSetEncoder(
+                x_dim=x_dim,
+                y_dim=y_dim,
                 hidden_dim=encoder_hidden,
                 cond_dim=cond_dim,
                 latent_dim=latent_dim,
@@ -220,7 +224,7 @@ class HyperNetworkSystem(nn.Module):
                 num_layers=attention_layers,
             )
         elif encoder_type == "deepset":
-            self.encoder = DeepSetEncoder(hidden_dim=encoder_hidden, cond_dim=cond_dim, latent_dim=latent_dim)
+            self.encoder = DeepSetEncoder(x_dim=x_dim, y_dim=y_dim, hidden_dim=encoder_hidden, cond_dim=cond_dim, latent_dim=latent_dim)
         else:
             raise ValueError(f"Unknown encoder_type: {encoder_type}")
         self.encoder_type = encoder_type
