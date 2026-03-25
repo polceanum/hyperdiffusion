@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -504,9 +505,23 @@ class Experiment:
         summary["config"] = asdict(self.config)
         with open(self.output_dir / "summary.json", "w", encoding="utf-8") as f:
             json.dump(summary, f, indent=2)
+        export_latest_paper_results(summary)
+        plots_dir = self.output_dir / "plots"
+        paper_plots_dir = Path(__file__).resolve().parents[1] / "paper" / "figures" / "plots"
+        paper_plots_dir.mkdir(parents=True, exist_ok=True)
+        for png in plots_dir.glob("*.png"):
+            shutil.copy2(png, paper_plots_dir / png.name)
         stage1.save_json(self.output_dir / "stage1_metrics.json"); stage2.save_json(self.output_dir / "stage2_metrics.json")
         self.save_checkpoint()
         return summary
+
+
+def export_latest_paper_results(summary):
+    root = Path(__file__).resolve().parents[1]
+    path = root / "paper" / "results" / "latest.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(summary, indent=2))
+    print("[paper] exported results")
 
 
 def build_parser() -> argparse.ArgumentParser:

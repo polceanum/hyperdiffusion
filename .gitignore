@@ -117,6 +117,20 @@ ipython_config.py
 .pdm-python
 .pdm-build/
 
+# paper build artifacts
+/paper/*.aux
+/paper/*.log
+/paper/*.out
+/paper/*.fls
+/paper/*.fdb_latexmk
+/paper/*.synctex.gz
+/paper/*.toc
+/paper/*.lof
+/paper/*.lot
+/paper/*.pdf
+/paper/figures/plots/*
+/paper/sections/annex.tex
+
 # pixi
 #   Similar to Pipfile.lock, it is generally recommended to include pixi.lock in version control.
 #pixi.lock
