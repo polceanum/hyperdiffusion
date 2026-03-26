@@ -163,6 +163,28 @@ class HyperDecoder(nn.Module):
         return unpack_parameters(flat, self.arch)
 
 
+class BaselineNetwork(nn.Module):
+    """A task-agnostic baseline (non-hypernetwork) for task regression/classification."""
+
+    def __init__(self, input_dim: int = 2, output_dim: int = 1, hidden_dim: int = 128, depth: int = 4):
+        super().__init__()
+        if depth < 1:
+            raise ValueError("BaselineNetwork depth must be at least 1")
+        layers = [nn.Linear(input_dim, hidden_dim), nn.ReLU()]
+        for _ in range(depth - 1):
+            layers.extend([nn.Linear(hidden_dim, hidden_dim), nn.ReLU()])
+        layers.append(nn.Linear(hidden_dim, output_dim))
+        self.net = nn.Sequential(*layers)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # Input x: (B, N, input_dim) or (total_points, input_dim)
+        if x.dim() == 3:
+            b, n, d = x.shape
+            out = self.net(x.view(b * n, d))
+            return out.view(b, n, -1)
+        return self.net(x)
+
+
 class ResidualFiLMBlock(nn.Module):
     def __init__(self, dim: int, cond_dim: int):
         super().__init__()

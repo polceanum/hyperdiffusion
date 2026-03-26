@@ -64,19 +64,20 @@ if sweep:
         out = root / "figures/plots/adaptation_curve.png"
         plt.savefig(out)
         plt.close()
-# Baseline comparison summary (diffusion vs encoder vs selector)
+# Baseline comparison summary (diffusion vs encoder vs selector vs static baseline)
 baseline = data.get('baseline_comparison', {})
 if baseline:
     plt.figure(figsize=(6, 4))
     names = []
     values = []
-    for key in ['deterministic_encoder', 'diffusion_sampler', 'selector']:
+    for key in ['deterministic_encoder', 'diffusion_sampler', 'selector', 'static_baseline']:
         item = baseline.get(key)
         if item is not None:
             names.append(key.replace('_', ' ').title())
             values.append(item.get('r2', item.get('loss', None)))
     if values:
-        plt.bar(names, values, color=['tab:blue', 'tab:orange', 'tab:green'])
+        colors = ['tab:blue', 'tab:orange', 'tab:green', 'tab:red'][:len(values)]
+        plt.bar(names, values, color=colors)
         plt.title('Baseline Comparison (R2 or Loss)')
         plt.ylabel('Value')
         plt.tight_layout()
@@ -91,7 +92,7 @@ pngs = sorted((root / "figures" / "plots").glob("*.png"))
 caption_map = {
     "support_sweep.png": "Support Size Sweep: Performance vs. number of support examples",
     "adaptation_curve.png": "Adaptation Curve: Model performance across different support set sizes",
-    "baseline_comparison.png": "Baseline Comparison: encoder/diffusion/selector vs. contextual sampler",
+    "baseline_comparison.png": "Baseline Comparison: encoder/diffusion/selector/static baseline comparison",
     "uncertainty_summary.png": "Uncertainty Diagnostics: Summary of uncertainty metrics for current experiment",
 }
 
@@ -99,18 +100,30 @@ caption_map = {
 def get_caption(filename):
     if filename in caption_map:
         return caption_map[filename]
-    
-    # Parse train/eval plots
+
+    # Parse train/eval plots — new format: {train|eval}_{family_name}_{idx}.png
+    # or reward variant: {train|eval}_{family_name}_{idx}_reward.png
     parts = filename.replace('.png', '').split('_')
-    if len(parts) >= 3:
-        plot_type, idx, family = parts[0], parts[1], '_'.join(parts[2:])
+    if len(parts) >= 3 and parts[0] in ('train', 'eval'):
+        plot_type = parts[0]
+        is_reward = parts[-1] == 'reward'
+        # Strip trailing 'reward' if present
+        core = parts[1:-1] if is_reward else parts[1:]
+        # Last element of core should be the numeric index
+        if core and core[-1].isdigit():
+            idx = int(core[-1])
+            family = '_'.join(core[:-1])
+        else:
+            # Fallback: second element is index (old format)
+            idx = int(core[0]) if core[0].isdigit() else 0
+            family = '_'.join(core[1:])
         family_name = family.replace('_', ' ').title()
-        
+        suffix = " (reward trajectory)" if is_reward else ""
         if plot_type == 'train':
-            return f"Training Example {int(idx)+1}: {family_name} task with support (orange) and query (gray) points where applicable; control reward-over-time plots are cost-based (higher/less negative is better)."
+            return f"Training Example {idx+1}: {family_name} task{suffix}."
         elif plot_type == 'eval':
-            return f"Evaluation Example {int(idx)+1}: {family_name} task generalization performance"
-    
+            return f"Evaluation Example {idx+1}: {family_name} task generalization{suffix}."
+
     # Fallback
     name = filename.replace('_', ' ').replace('.png', '').title()
     return f"{name}"

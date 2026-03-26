@@ -125,6 +125,11 @@ class Experiment:
             x_dim=input_dim,
             y_dim=1,
         ).to(self.device)
+
+        # Ablation baseline with no hypernetwork / fast weights
+        from .models import BaselineNetwork
+        self.baseline = BaselineNetwork(input_dim=input_dim, output_dim=1, hidden_dim=config.encoder_hidden, depth=4).to(self.device)
+        self.opt_baseline = torch.optim.AdamW(self.baseline.parameters(), lr=config.learning_rate_stage1)
         self.denoiser = DiffusionDenoiser(
             latent_dim=config.latent_dim,
             cond_dim=config.cond_dim,
@@ -199,7 +204,27 @@ class Experiment:
         self.opt_stage1.step()
 
         metric = self._item_metric(pred, batch.query_y).mean().item()
-        return {"stage1_loss": loss.item(), "stage1_task_loss": task_loss.item(), f"stage1_{self._metric_name()}": metric, "latent_norm": latent.norm(dim=-1).mean().item()}
+        # Baseline update: train static baseline on support points (no per-episode fast weights)
+        self.baseline.train()
+        baseline_x = batch.support_x.view(-1, batch.support_x.shape[-1])
+        baseline_y = batch.support_y.view(-1, batch.support_y.shape[-1])
+        baseline_pred = self.baseline(baseline_x)
+        baseline_loss = self._task_loss(baseline_pred, baseline_y)
+        self.opt_baseline.zero_grad(set_to_none=True)
+        baseline_loss.backward()
+        self.opt_baseline.step()
+        with torch.no_grad():
+            query_baseline_pred = self.baseline(batch.query_x.view(-1, batch.query_x.shape[-1])).view(batch.query_x.shape[0], batch.query_x.shape[1], -1)
+            baseline_metric = self._item_metric(query_baseline_pred, batch.query_y).mean().item()
+
+        return {
+            "stage1_loss": loss.item(),
+            "stage1_task_loss": task_loss.item(),
+            f"stage1_{self._metric_name()}": metric,
+            "latent_norm": latent.norm(dim=-1).mean().item(),
+            "baseline_loss": baseline_loss.item(),
+            "baseline_metric": baseline_metric,
+        }
 
     def stage2_step(self, batch: EpisodeBatch) -> Dict[str, float]:
         self.denoiser.train()
@@ -295,7 +320,7 @@ class Experiment:
 
         per_family: Dict[str, Dict[str, List[float]]] = {}
         overall: Dict[str, List[float]] = {
-            "encoder_metric": [], "diffusion_metric": [], "selector_metric": [], "encoder_loss": [], "diffusion_loss": [], "selector_loss": [],
+            "encoder_metric": [], "diffusion_metric": [], "selector_metric": [], "baseline_metric": [], "encoder_loss": [], "diffusion_loss": [], "selector_loss": [], "baseline_loss": [],
             "diffusion_metric_mean_k": [], "diffusion_metric_best_k": [], "prediction_disagreement": [],
             "weight_pairwise_l2": [], "latent_pairwise_l2": [],
             "uncertainty_error_correlation": [], "uncertainty_mean": [], "uncertainty_on_high_error_points": [], "uncertainty_on_low_error_points": []
@@ -306,6 +331,12 @@ class Experiment:
             context, latent = self.system.encode(batch.support_x, batch.support_y)
             pred_enc, metric_enc, _ = self._decode_and_score(batch.query_x, batch.query_y, latent, context)
             loss_enc = self._item_loss(pred_enc, batch.query_y)
+
+            # Baseline evaluation on query set
+            b, q, _ = batch.query_x.shape
+            baseline_query = self.baseline(batch.query_x.view(b * q, -1)).view(b, q, -1)
+            baseline_metric = self._item_metric(baseline_query, batch.query_y)
+            baseline_loss = self._item_loss(baseline_query, batch.query_y)
 
             z_samples, pred_samples, metric_samples, flat_params = [], [], [], []
             for _k in range(self.config.diagnostic_samples):
@@ -378,6 +409,8 @@ class Experiment:
                     "encoder_loss": loss_enc[idx].item(),
                     "diffusion_loss": loss_diff[idx].item(),
                     "selector_loss": 0.0,
+                    "baseline_metric": baseline_metric[idx].item(),
+                    "baseline_loss": baseline_loss[idx].item(),
                     "diffusion_metric_mean_k": metric_mean[idx].item(),
                     "diffusion_metric_best_k": metric_best[idx].item(),
                     "prediction_disagreement": disagreement[idx].item(),
@@ -398,9 +431,11 @@ class Experiment:
                 f"encoder_{metric_name}": self._mean(values["encoder_metric"]),
                 f"diffusion_{metric_name}": self._mean(values["diffusion_metric"]),
                 f"selector_{metric_name}": self._mean(values.get("selector_metric", [])) if values.get("selector_metric") else 0.0,
+                    f"baseline_{metric_name}": self._mean(values.get("baseline_metric", [])) if values.get("baseline_metric") else 0.0,
                 "encoder_loss": self._mean(values["encoder_loss"]),
                 "diffusion_loss": self._mean(values["diffusion_loss"]),
                 "selector_loss": self._mean(values.get("selector_loss", [])) if values.get("selector_loss") else 0.0,
+                    "baseline_loss": self._mean(values.get("baseline_loss", [])) if values.get("baseline_loss") else 0.0,
                 f"diffusion_{metric_name}_mean_k": self._mean(values["diffusion_metric_mean_k"]),
                 f"diffusion_{metric_name}_best_k": self._mean(values["diffusion_metric_best_k"]),
                 "prediction_disagreement": self._mean(values["prediction_disagreement"]),
@@ -424,6 +459,7 @@ class Experiment:
                 "deterministic_encoder": {metric_name: pack(overall)[f"encoder_{metric_name}"], "loss": pack(overall)["encoder_loss"]},
                 "diffusion_sampler": {metric_name: pack(overall)[f"diffusion_{metric_name}"], "loss": pack(overall)["diffusion_loss"]},
                 "selector": {metric_name: pack(overall)[f"selector_{metric_name}"], "loss": pack(overall)["selector_loss"]},
+                "static_baseline": {metric_name: pack(overall)[f"baseline_{metric_name}"], "loss": pack(overall)["baseline_loss"]},
             },
         }
         return summary
@@ -477,8 +513,12 @@ class Experiment:
     def _plot_episode_set(self, family_names: List[str], prefix: str) -> List[str]:
         if self.config.visualization_count <= 0:
             return []
-        batch = self.to_device(self.sample_batch(batch_size=self.config.visualization_count, family_names=family_names))
-        return self._plot_classification_batch(batch, prefix) if self.config.task_type == "classification" else self._plot_regression_batch(batch, prefix)
+        paths: List[str] = []
+        plot_fn = self._plot_classification_batch if self.config.task_type == "classification" else self._plot_regression_batch
+        for family_name in family_names:
+            batch = self.to_device(self.sample_batch(batch_size=self.config.visualization_count, family_names=[family_name]))
+            paths.extend(plot_fn(batch, f"{prefix}_{family_name}"))
+        return paths
 
     @torch.no_grad()
     def _plot_classification_batch(self, batch: EpisodeBatch, prefix: str) -> List[str]:
@@ -491,6 +531,9 @@ class Experiment:
         grid = torch.stack([gx.reshape(-1), gy.reshape(-1)], dim=-1).unsqueeze(0).expand(b, -1, -1)
         enc_grid = functional_target_network(grid, self.system.decode(latent, context))
         acc_enc = self._item_metric(functional_target_network(batch.query_x, self.system.decode(latent, context)), batch.query_y)
+        baseline_grid = torch.sigmoid(self.baseline(grid.reshape(b * grid.shape[1], -1)).reshape(b, grid.shape[1], -1))
+        baseline_pred = self.baseline(batch.query_x.reshape(batch.query_x.shape[0] * batch.query_x.shape[1], -1)).reshape(batch.query_x.shape[0], batch.query_x.shape[1], -1)
+        baseline_acc = self._item_metric(baseline_pred, batch.query_y)
 
         pred_list, grid_list, acc_list = [], [], []
         for _ in range(self.config.diagnostic_samples):
@@ -505,13 +548,18 @@ class Experiment:
         best_grid = grid_stack[torch.arange(b, device=self.device), best_idx]
         mean_grid = grid_stack.mean(dim=1)
         disagreement = (grid_stack > 0.5).float().std(dim=1)
+        baseline_gap = (best_grid - baseline_grid).abs()
 
         for i in range(b):
-            fig, axes = plt.subplots(1, 4, figsize=(16, 4), constrained_layout=True)
+            fig, axes = plt.subplots(1, 6, figsize=(24, 4), constrained_layout=True)
+            best_acc_i = acc_stack[i, best_idx[i]].item()
+            base_acc_i = baseline_acc[i].item()
             panels = [
                 (torch.sigmoid(enc_grid[i].squeeze(-1)).reshape(grid_size, grid_size).cpu(), f"encoder {acc_enc[i].item():.3f}"),
-                (best_grid[i].squeeze(-1).reshape(grid_size, grid_size).cpu(), f"best {acc_stack[i, best_idx[i]].item():.3f}"),
+                (best_grid[i].squeeze(-1).reshape(grid_size, grid_size).cpu(), f"best {best_acc_i:.3f}"),
+                (baseline_grid[i].squeeze(-1).reshape(grid_size, grid_size).cpu(), f"static baseline {baseline_acc[i].item():.3f}"),
                 (mean_grid[i].squeeze(-1).reshape(grid_size, grid_size).cpu(), "mean prob"),
+                (baseline_gap[i].squeeze(-1).reshape(grid_size, grid_size).cpu(), "best-static |Δp|"),
                 (disagreement[i].squeeze(-1).reshape(grid_size, grid_size).cpu(), "sample std"),
             ]
             for ax, (image, title) in zip(axes, panels):
@@ -520,8 +568,8 @@ class Experiment:
                 ax.scatter(sx[sl < 0.5], sy[sl < 0.5], s=30, edgecolor="black", facecolor="tab:blue", linewidth=0.6)
                 ax.scatter(sx[sl > 0.5], sy[sl > 0.5], s=30, edgecolor="black", facecolor="tab:orange", linewidth=0.6)
                 ax.set_title(title); ax.set_xticks([]); ax.set_yticks([])
-            fig.suptitle(f"{prefix} | family={batch.family_name[i]}")
-            out = self.output_dir / "plots" / f"{prefix}_{i:02d}_{batch.family_name[i]}.png"
+            fig.suptitle(f"{prefix} | family={batch.family_name[i]} | Δ(best-static)={best_acc_i - base_acc_i:.3f}")
+            out = self.output_dir / "plots" / f"{prefix}_{i:02d}.png"
             fig.savefig(out, dpi=140); plt.close(fig)
             paths.append(str(out.relative_to(self.output_dir)))
         return paths
@@ -536,6 +584,10 @@ class Experiment:
         if input_dim == 1:
             # 1D regression - use line plots
             grid_x = torch.linspace(-3.2, 3.2, 256, device=self.device).view(1, -1, 1).expand(b, -1, -1)
+
+            baseline_curve = self.baseline(grid_x.reshape(b * grid_x.shape[1], -1)).reshape(b, grid_x.shape[1], -1)
+            baseline_query = self.baseline(batch.query_x.reshape(b * batch.query_x.shape[1], -1)).reshape(b, batch.query_x.shape[1], -1)
+            baseline_metric = self._item_metric(baseline_query, batch.query_y)
             
             enc_curve = functional_target_network(grid_x, self.system.decode(latent, context))
             pred_enc = functional_target_network(batch.query_x, self.system.decode(latent, context))
@@ -553,18 +605,23 @@ class Experiment:
             best_curve = curve_stack[torch.arange(b, device=self.device), best_idx]
             mean_curve = curve_stack.mean(dim=1)
             std_curve = curve_stack.std(dim=1)
+            baseline_gap_curve = (best_curve - baseline_curve).abs()
 
             for i in range(b):
-                fig, axes = plt.subplots(1, 4, figsize=(16, 4), constrained_layout=True)
+                fig, axes = plt.subplots(1, 6, figsize=(24, 4), constrained_layout=True)
                 xg = grid_x[i, :, 0].cpu().numpy()
                 support_x = batch.support_x[i, :, 0].cpu().numpy()
                 support_y = batch.support_y[i, :, 0].cpu().numpy()
                 query_x = batch.query_x[i, :, 0].cpu().numpy()
                 query_y = batch.query_y[i, :, 0].cpu().numpy()
+                best_r2_i = metric_stack[i, best_idx[i]].item()
+                base_r2_i = baseline_metric[i].item()
                 panels = [
                     (enc_curve[i, :, 0].cpu().numpy(), f"encoder r2={metric_enc[i].item():.3f}"),
-                    (best_curve[i, :, 0].cpu().numpy(), f"best r2={metric_stack[i, best_idx[i]].item():.3f}"),
+                    (best_curve[i, :, 0].cpu().numpy(), f"best r2={best_r2_i:.3f}"),
+                    (baseline_curve[i, :, 0].cpu().numpy(), f"static baseline r2={baseline_metric[i].item():.3f}"),
                     (mean_curve[i, :, 0].cpu().numpy(), "diffusion mean"),
+                    (baseline_gap_curve[i, :, 0].cpu().numpy(), "best-static |Δy|"),
                     (std_curve[i, :, 0].cpu().numpy(), "sample std"),
                 ]
                 for ax, (curve, title) in zip(axes, panels):
@@ -574,8 +631,8 @@ class Experiment:
                     ax.set_title(title)
                     ax.legend(fontsize=8)
                 mode = "Evaluation (generalization)" if prefix.startswith("eval") else "Training (in-distribution)"
-                fig.suptitle(f"{prefix} | {mode} | family={batch.family_name[i]}")
-                out = self.output_dir / "plots" / f"{prefix}_{i:02d}_{batch.family_name[i]}.png"
+                fig.suptitle(f"{prefix} | {mode} | family={batch.family_name[i]} | Δ(best-static)={best_r2_i - base_r2_i:.3f}")
+                out = self.output_dir / "plots" / f"{prefix}_{i:02d}.png"
                 fig.savefig(out, dpi=140); plt.close(fig)
                 paths.append(str(out.relative_to(self.output_dir)))
         else:
@@ -584,6 +641,10 @@ class Experiment:
             grid_lin = torch.linspace(-2.5, 2.5, grid_size, device=self.device)
             gx, gy = torch.meshgrid(grid_lin, grid_lin, indexing="ij")
             grid_2d = torch.stack([gx.reshape(-1), gy.reshape(-1)], dim=-1).unsqueeze(0).expand(b, -1, -1)
+
+            baseline_surface = self.baseline(grid_2d.reshape(b * grid_2d.shape[1], -1)).reshape(b, grid_size, grid_size)
+            baseline_pred = self.baseline(batch.query_x.reshape(batch.query_x.shape[0] * batch.query_x.shape[1], -1)).reshape(batch.query_x.shape[0], batch.query_x.shape[1], -1)
+            baseline_metric = self._item_metric(baseline_pred, batch.query_y)
 
             enc_surface = functional_target_network(grid_2d, self.system.decode(latent, context)).reshape(b, grid_size, grid_size)
             pred_enc = functional_target_network(batch.query_x, self.system.decode(latent, context))
@@ -605,6 +666,7 @@ class Experiment:
             best_surface = surface_stack[torch.arange(b, device=self.device), best_idx]
             mean_surface = surface_stack.mean(dim=1)
             std_surface = surface_stack.std(dim=1)
+            best_baseline_gap_surface = (best_surface - baseline_surface).abs()
 
             # Compute ground truth surface if available
             gt_surfaces = []
@@ -616,8 +678,8 @@ class Experiment:
                     gt_surf = None
                 gt_surfaces.append(gt_surf)
 
-            global_vmin = torch.cat([enc_surface.flatten(), best_surface.flatten(), mean_surface.flatten()]).min().item()
-            global_vmax = torch.cat([enc_surface.flatten(), best_surface.flatten(), mean_surface.flatten()]).max().item()
+            global_vmin = torch.cat([enc_surface.flatten(), best_surface.flatten(), mean_surface.flatten(), baseline_surface.flatten()]).min().item()
+            global_vmax = torch.cat([enc_surface.flatten(), best_surface.flatten(), mean_surface.flatten(), baseline_surface.flatten()]).max().item()
             std_vmax = std_surface.max().item() if std_surface.numel() > 0 else 1.0
 
             for i in range(b):
@@ -632,25 +694,29 @@ class Experiment:
                 enc_pred = pred_enc[i].squeeze(-1).cpu().numpy()
                 best_pred = pred_stack[i, best_idx[i]].squeeze(-1).cpu().numpy()
                 mean_pred = pred_stack[i].mean(dim=0).squeeze(-1).cpu().numpy()
+                baseline_query_pred = baseline_pred[i].squeeze(-1).cpu().numpy()
                 enc_error = np.abs(enc_pred - query_z)
                 best_error = np.abs(best_pred - query_z)
                 mean_error = np.abs(mean_pred - query_z)
-                error_vmax = max(enc_error.max(), best_error.max(), mean_error.max())
+                baseline_error = np.abs(baseline_query_pred - query_z)
+                error_vmax = max(enc_error.max(), best_error.max(), mean_error.max(), baseline_error.max())
 
                 surfaces = [
                     (enc_surface[i].cpu().numpy(), f"encoder r2={metric_enc[i].item():.3f}", enc_error),
                     (best_surface[i].cpu().numpy(), f"best r2={metric_stack[i, best_idx[i]].item():.3f}", best_error),
+                    (baseline_surface[i].cpu().numpy(), f"static baseline r2={baseline_metric[i].item():.3f}", baseline_error),
                     (mean_surface[i].cpu().numpy(), "diffusion mean", mean_error),
+                    (best_baseline_gap_surface[i].cpu().numpy(), "best-static |Δy|", None),
                     (std_surface[i].cpu().numpy(), "sample std", None),
                 ]
                 if gt_surfaces[i] is not None:
                     surfaces.insert(2, (gt_surfaces[i], "ground truth", None))
 
                 num_panels = len(surfaces)
-                if num_panels == 5:
+                if num_panels == 6:
                     fig, axes = plt.subplots(2, 3, figsize=(18, 10), constrained_layout=True)
                 else:
-                    fig, axes = plt.subplots(2, 2, figsize=(14, 10), constrained_layout=True)
+                    fig, axes = plt.subplots(2, 3 if num_panels > 4 else 2, figsize=(18 if num_panels > 4 else 14, 10), constrained_layout=True)
 
                 for ax, (surface, title, error) in zip(axes.flat, surfaces):
                     if surface is None:
@@ -659,6 +725,9 @@ class Experiment:
                         continue
                     if title == "sample std":
                         img = ax.imshow(surface, origin="lower", extent=(-2.5, 2.5, -2.5, 2.5), cmap="viridis", vmin=0.0, vmax=std_vmax, aspect="equal")
+                    elif title == "best-static |Δy|":
+                        gap_vmax = max(best_baseline_gap_surface[i].max().item(), 1e-6)
+                        img = ax.imshow(surface, origin="lower", extent=(-2.5, 2.5, -2.5, 2.5), cmap="magma", vmin=0.0, vmax=gap_vmax, aspect="equal")
                     else:
                         img = ax.imshow(surface, origin="lower", extent=(-2.5, 2.5, -2.5, 2.5), cmap="viridis", vmin=global_vmin, vmax=global_vmax, aspect="equal")
                     ax.contour(surface, levels=12, colors="k", linewidths=0.6, extent=(-2.5, 2.5, -2.5, 2.5), alpha=0.6)
@@ -672,9 +741,12 @@ class Experiment:
                     ax.set_ylabel("x₂")
                     fig.colorbar(img, ax=ax, shrink=0.72)
 
+                for ax in axes.flat[len(surfaces):]:
+                    ax.axis("off")
+
                 mode = "Evaluation (generalization)" if prefix.startswith("eval") else "Training (in-distribution)"
-                fig.suptitle(f"{prefix} | {mode} | family={batch.family_name[i]}")
-                out = self.output_dir / "plots" / f"{prefix}_{i:02d}_{batch.family_name[i]}.png"
+                fig.suptitle(f"{prefix} | {mode} | family={batch.family_name[i]} | Δ(best-static)={metric_stack[i, best_idx[i]].item() - baseline_metric[i].item():.3f}")
+                out = self.output_dir / "plots" / f"{prefix}_{i:02d}.png"
                 fig.savefig(out, dpi=140); plt.close(fig)
                 paths.append(str(out.relative_to(self.output_dir)))
 
@@ -693,22 +765,28 @@ class Experiment:
                         def zero_action_policy(state: torch.Tensor) -> torch.Tensor:
                             return torch.zeros(1, dtype=torch.float32)
 
+                        def baseline_policy(state: torch.Tensor) -> torch.Tensor:
+                            with torch.no_grad():
+                                u = self.baseline(state.view(1, -1).to(self.device)).squeeze().item()
+                                return torch.tensor([u], dtype=torch.float32)
+
                         initial_state = batch.support_x[i, 0]
                         rollout_data = family.rollout(policy_fn, initial_state, num_steps=80, dt=0.05)
                         baseline_rollout = family.rollout(zero_action_policy, initial_state, num_steps=80, dt=0.05)
-
-                        cum_diff = rollout_data['cum_rewards'][-1] - baseline_rollout['cum_rewards'][-1]
+                        static_rollout = family.rollout(baseline_policy, initial_state, num_steps=80, dt=0.05)
 
                         fig_r, ax_r = plt.subplots(figsize=(6, 4), constrained_layout=True)
                         ax_r.plot(rollout_data["rewards"], label="learned policy step reward", color="tab:blue")
                         ax_r.plot(rollout_data["cum_rewards"], label="learned policy cumulative reward", color="tab:orange")
+                        ax_r.plot(static_rollout["rewards"], label="static baseline step reward", color="tab:red", linestyle="--")
+                        ax_r.plot(static_rollout["cum_rewards"], label="static baseline cumulative reward", color="tab:red", linestyle=":")
                         ax_r.plot(baseline_rollout["rewards"], label="zero-action baseline step reward", color="tab:green", linestyle="--")
                         ax_r.plot(baseline_rollout["cum_rewards"], label="zero-action baseline cumulative reward", color="tab:green", linestyle=":")
                         ax_r.set_xlabel("time step")
                         ax_r.set_ylabel("higher is better")
-                        ax_r.set_title(f"{prefix} reward curve (higher is better, cost-style) | family={batch.family_name[i]} | Δcum={cum_diff:.3f}")
+                        ax_r.set_title(f"{prefix} reward curve | family={batch.family_name[i]}")
                         ax_r.legend()
-                        out_r = self.output_dir / "plots" / f"{prefix}_{i:02d}_{batch.family_name[i]}_reward.png"
+                        out_r = self.output_dir / "plots" / f"{prefix}_{i:02d}_reward.png"
                         fig_r.savefig(out_r, dpi=140)
                         plt.close(fig_r)
                         paths.append(str(out_r.relative_to(self.output_dir)))
