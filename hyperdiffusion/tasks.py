@@ -321,6 +321,62 @@ class SpiralHardFamily(TaskFamily):
         return _sample_spiral_family(support_size, query_size, generator, max_turns=2.2, pitch_low=0.18, pitch_high=0.28, noise_scale=0.06)
 
 
+class CheckerboardFamily(TaskFamily):
+    name = "checkerboard"
+
+    def sample_episode(self, support_size: int, query_size: int, generator: Optional[torch.Generator] = None):
+        total = support_size + query_size
+        x = _sample_points(total, 2.2, generator)
+        scale = _rand_uniform((1,), 0.55, 1.1, generator).item()
+        angle = _rand_uniform((1,), 0.0, math.pi / 4, generator).item()
+        xr = x @ _rotation(angle).T
+        ix = torch.floor(xr[:, 0] / scale).long()
+        iy = torch.floor(xr[:, 1] / scale).long()
+        y = ((ix + iy) % 2 == 0).float().unsqueeze(-1)
+        return _split_episode(x, y, support_size)
+
+
+class ConcentricRingsFamily(TaskFamily):
+    name = "concentric_rings"
+
+    def sample_episode(self, support_size: int, query_size: int, generator: Optional[torch.Generator] = None):
+        total = support_size + query_size
+        x = _sample_points(total, 2.2, generator)
+        r = x.pow(2).sum(dim=-1).sqrt()
+        ring_width = _rand_uniform((1,), 0.45, 0.85, generator).item()
+        phase = _rand_uniform((1,), 0.0, ring_width, generator).item()
+        y = (torch.floor((r + phase) / ring_width).long() % 2 == 0).float().unsqueeze(-1)
+        return _split_episode(x, y, support_size)
+
+
+class WedgesFamily(TaskFamily):
+    name = "wedges"
+
+    def sample_episode(self, support_size: int, query_size: int, generator: Optional[torch.Generator] = None):
+        total = support_size + query_size
+        x = _sample_points(total, 2.2, generator)
+        angle = torch.atan2(x[:, 1], x[:, 0])
+        phase = _rand_uniform((1,), -math.pi, math.pi, generator).item()
+        n_wedges = int(torch.randint(3, 7, (1,), generator=generator).item())
+        wedge_idx = torch.floor((angle - phase + math.pi) / (2 * math.pi / n_wedges)).long()
+        y = (wedge_idx % 2 == 0).float().unsqueeze(-1)
+        return _split_episode(x, y, support_size)
+
+
+class ParallelBandsFamily(TaskFamily):
+    name = "parallel_bands"
+
+    def sample_episode(self, support_size: int, query_size: int, generator: Optional[torch.Generator] = None):
+        total = support_size + query_size
+        x = _sample_points(total, 2.2, generator)
+        angle = _rand_uniform((1,), 0.0, math.pi, generator).item()
+        width = _rand_uniform((1,), 0.5, 1.0, generator).item()
+        phase = _rand_uniform((1,), 0.0, width, generator).item()
+        proj = x[:, 0] * math.cos(angle) + x[:, 1] * math.sin(angle)
+        y = (torch.floor((proj + phase) / width).long() % 2 == 0).float().unsqueeze(-1)
+        return _split_episode(x, y, support_size)
+
+
 CLASSIFICATION_FAMILIES: Dict[str, TaskFamily] = {
     family.name: family()
     for family in [
@@ -340,6 +396,10 @@ CLASSIFICATION_FAMILIES: Dict[str, TaskFamily] = {
         SpiralEasyFamily,
         SpiralMediumFamily,
         SpiralHardFamily,
+        CheckerboardFamily,
+        ConcentricRingsFamily,
+        WedgesFamily,
+        ParallelBandsFamily,
     ]
 }
 
@@ -362,10 +422,14 @@ CLASSIFICATION_FAMILIES_CLASSES: Dict[str, type] = {
         SpiralEasyFamily,
         SpiralMediumFamily,
         SpiralHardFamily,
+        CheckerboardFamily,
+        ConcentricRingsFamily,
+        WedgesFamily,
+        ParallelBandsFamily,
     ]
 }
 
-DEFAULT_TRAIN_FAMILIES = ["linear", "xor", "moons", "circles"]
+DEFAULT_TRAIN_FAMILIES = ["linear", "xor", "moons", "circles", "sine", "diamond", "checkerboard", "concentric_rings"]
 BRIDGE_FAMILIES = [
     "ellipse",
     "rotated_diamond",
@@ -375,6 +439,8 @@ BRIDGE_FAMILIES = [
     "spiral_easy",
     "spiral_medium",
     "spiral_hard",
+    "wedges",
+    "parallel_bands",
 ]
 EXPANDED_TRAIN_FAMILIES = DEFAULT_TRAIN_FAMILIES + BRIDGE_FAMILIES
 ORIGINAL_TRAIN_GROUPS: Dict[str, List[str]] = {
@@ -488,6 +554,70 @@ class AbsRegressionFamily(RegressionFamily):
         return _split_episode(x, y, support_size)
 
 
+class DampedSineFamily(RegressionFamily):
+    name = "damped_sine"
+
+    def sample_episode(self, support_size: int, query_size: int, generator: Optional[torch.Generator] = None):
+        total = support_size + query_size
+        x = _sample_1d_inputs(total, -3.0, 3.0, generator)
+        amp = _rand_uniform((1,), 0.8, 1.5, generator).item()
+        freq = _rand_uniform((1,), 0.8, 2.0, generator).item()
+        phase = _rand_uniform((1,), -math.pi, math.pi, generator).item()
+        decay = _rand_uniform((1,), 0.3, 0.8, generator).item()
+        y = amp * torch.exp(-decay * x.abs()) * torch.sin(freq * x + phase)
+        y = y + 0.03 * _randn(y.shape, generator)
+        return _split_episode(x, y, support_size)
+
+
+class GaussianBumpFamily(RegressionFamily):
+    name = "gaussian_bump"
+
+    def sample_episode(self, support_size: int, query_size: int, generator: Optional[torch.Generator] = None):
+        total = support_size + query_size
+        x = _sample_1d_inputs(total, -3.0, 3.0, generator)
+        n_bumps = int(torch.randint(2, 5, (1,), generator=generator).item())
+        y = torch.zeros(total, 1)
+        for _ in range(n_bumps):
+            center = _rand_uniform((1,), -2.5, 2.5, generator).item()
+            width = _rand_uniform((1,), 0.3, 1.0, generator).item()
+            height = _rand_uniform((1,), -1.5, 1.5, generator).item()
+            y = y + height * torch.exp(-0.5 * ((x - center) / width) ** 2)
+        y = y + 0.02 * _randn(y.shape, generator)
+        return _split_episode(x, y, support_size)
+
+
+class StepRegressionFamily(RegressionFamily):
+    name = "step_regression"
+
+    def sample_episode(self, support_size: int, query_size: int, generator: Optional[torch.Generator] = None):
+        total = support_size + query_size
+        x = _sample_1d_inputs(total, -3.0, 3.0, generator)
+        n_steps = int(torch.randint(3, 6, (1,), generator=generator).item())
+        bps = torch.sort(_rand_uniform((n_steps - 1,), -2.5, 2.5, generator)).values
+        heights = _rand_uniform((n_steps,), -1.5, 1.5, generator)
+        y = torch.zeros(total, 1)
+        for i in range(total):
+            bucket = int((bps < x[i, 0]).sum().item())
+            y[i, 0] = heights[bucket]
+        y = y + 0.02 * _randn(y.shape, generator)
+        return _split_episode(x, y, support_size)
+
+
+class ExpRegressionFamily(RegressionFamily):
+    name = "exp_regression"
+
+    def sample_episode(self, support_size: int, query_size: int, generator: Optional[torch.Generator] = None):
+        total = support_size + query_size
+        x = _sample_1d_inputs(total, -2.5, 2.5, generator)
+        rate = _rand_uniform((1,), -0.7, 0.7, generator).item()
+        amp = _rand_uniform((1,), 0.4, 1.2, generator).item()
+        offset = _rand_uniform((1,), -0.6, 0.6, generator).item()
+        y = amp * torch.exp(rate * x) + offset
+        y = torch.clamp(y, -4.0, 4.0)
+        y = y + 0.03 * _randn(y.shape, generator)
+        return _split_episode(x, y, support_size)
+
+
 class BanditLinearFamily(RegressionFamily):
     name = "bandit_linear"
 
@@ -576,6 +706,69 @@ class BanditShiftedFamily(RegressionFamily):
             + self.coeff_quad * ((x[:, 0:1] + self.shift_x) ** 2 + (x[:, 1:2] + self.shift_y) ** 2)
             + self.bias
         ).unsqueeze(-1)
+
+
+class BanditSineRadialFamily(RegressionFamily):
+    name = "bandit_sine_radial"
+    input_dim = 2
+
+    def sample_episode(self, support_size: int, query_size: int, generator: Optional[torch.Generator] = None):
+        total = support_size + query_size
+        x = _sample_points(total, 2.0, generator)
+        self.freq = _rand_uniform((1,), 1.0, 2.5, generator).item()
+        self.amp = _rand_uniform((1,), 1.0, 2.5, generator).item()
+        self.phase = _rand_uniform((1,), -math.pi, math.pi, generator).item()
+        r = x.pow(2).sum(dim=-1, keepdim=True).sqrt()
+        y = self.amp * torch.sin(self.freq * r + self.phase)
+        y = y + 0.01 * _randn(y.shape, generator)
+        return _split_episode(x, y, support_size)
+
+    def f(self, x: torch.Tensor) -> torch.Tensor:
+        r = x.pow(2).sum(dim=-1, keepdim=True).sqrt()
+        return (self.amp * torch.sin(self.freq * r + self.phase)).unsqueeze(-1)
+
+
+class BanditGaussianFamily(RegressionFamily):
+    name = "bandit_gaussian"
+    input_dim = 2
+
+    def sample_episode(self, support_size: int, query_size: int, generator: Optional[torch.Generator] = None):
+        total = support_size + query_size
+        x = _sample_points(total, 2.0, generator)
+        self.center = _rand_uniform((2,), -1.0, 1.0, generator)
+        self.sigma = _rand_uniform((1,), 0.3, 1.0, generator).item()
+        self.amp = _rand_uniform((1,), 1.5, 3.5, generator).item()
+        diff = x - self.center.unsqueeze(0)
+        r2 = diff.pow(2).sum(dim=-1, keepdim=True)
+        y = self.amp * torch.exp(-r2 / (2 * self.sigma ** 2))
+        y = y + 0.01 * _randn(y.shape, generator)
+        return _split_episode(x, y, support_size)
+
+    def f(self, x: torch.Tensor) -> torch.Tensor:
+        diff = x - self.center.unsqueeze(0)
+        r2 = diff.pow(2).sum(dim=-1, keepdim=True)
+        return (self.amp * torch.exp(-r2 / (2 * self.sigma ** 2))).unsqueeze(-1)
+
+
+class BanditCubicFamily(RegressionFamily):
+    name = "bandit_cubic"
+    input_dim = 2
+
+    def sample_episode(self, support_size: int, query_size: int, generator: Optional[torch.Generator] = None):
+        total = support_size + query_size
+        x = _sample_points(total, 2.0, generator)
+        self.a = _rand_uniform((1,), -1.0, 1.0, generator).item()
+        self.b = _rand_uniform((1,), -1.5, 1.5, generator).item()
+        self.c = _rand_uniform((1,), -1.0, 1.0, generator).item()
+        self.cross = _rand_uniform((1,), -1.0, 1.0, generator).item()
+        y = (self.a * x[:, 0:1] ** 3 + self.b * x[:, 1:2] ** 2
+             + self.c * x[:, 0:1] * x[:, 1:2] + self.cross * x[:, 1:2] ** 3)
+        y = y + 0.01 * _randn(y.shape, generator)
+        return _split_episode(x, y, support_size)
+
+    def f(self, x: torch.Tensor) -> torch.Tensor:
+        return (self.a * x[:, 0:1] ** 3 + self.b * x[:, 1:2] ** 2
+                + self.c * x[:, 0:1] * x[:, 1:2] + self.cross * x[:, 1:2] ** 3).unsqueeze(-1)
 
 
 class LinearControlFamily(RegressionFamily):
@@ -707,6 +900,241 @@ class NonlinearControlFamily(RegressionFamily):
         v_next = v + (-x - 0.1 * v + action[0] + 0.1 * x ** 2) * dt
         return torch.stack([x_next, v_next])
 
+
+class LinearControlStiffFamily(RegressionFamily):
+    name = "linear_control_stiff"
+    input_dim = 2
+    task_type = "control"
+
+    def sample_episode(self, support_size: int, query_size: int, generator: Optional[torch.Generator] = None):
+        total = support_size + query_size
+        states = _sample_points(total, 2.4, generator)
+        self.k1 = _rand_uniform((1,), 2.2, 4.2, generator).item()
+        self.k2 = _rand_uniform((1,), 1.0, 2.8, generator).item()
+        actions = -self.k1 * states[:, 0:1] - self.k2 * states[:, 1:2]
+        actions = actions + 0.02 * _randn(actions.shape, generator)
+        return _split_episode(states, actions, support_size)
+
+    def reward(self, state: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
+        x, v = state[0], state[1]
+        return -(1.3 * x ** 2 + 0.2 * v ** 2 + 0.03 * action[0] ** 2)
+
+    def dynamics(self, state: torch.Tensor, action: torch.Tensor, dt: float = 0.05) -> torch.Tensor:
+        x, v = state[0], state[1]
+        x_next = x + v * dt
+        v_next = v + (-1.6 * x - 0.25 * v + action[0]) * dt
+        return torch.stack([x_next, v_next])
+
+
+class LinearControlDriftFamily(RegressionFamily):
+    name = "linear_control_drift"
+    input_dim = 2
+    task_type = "control"
+
+    def sample_episode(self, support_size: int, query_size: int, generator: Optional[torch.Generator] = None):
+        total = support_size + query_size
+        states = _sample_points(total, 2.2, generator)
+        self.k1 = _rand_uniform((1,), 1.4, 3.4, generator).item()
+        self.k2 = _rand_uniform((1,), 0.8, 2.4, generator).item()
+        actions = -self.k1 * states[:, 0:1] - self.k2 * states[:, 1:2]
+        actions = actions + 0.02 * _randn(actions.shape, generator)
+        return _split_episode(states, actions, support_size)
+
+    def reward(self, state: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
+        x, v = state[0], state[1]
+        return -(x ** 2 + 0.15 * v ** 2 + 0.02 * action[0] ** 2)
+
+    def dynamics(self, state: torch.Tensor, action: torch.Tensor, dt: float = 0.05) -> torch.Tensor:
+        x, v = state[0], state[1]
+        drift = 0.18 * torch.sin(1.3 * x) + 0.08 * v * x
+        x_next = x + v * dt
+        v_next = v + (-x - 0.12 * v + action[0] + drift) * dt
+        return torch.stack([x_next, v_next])
+
+
+class NonlinearControlHardFamily(RegressionFamily):
+    name = "nonlinear_control_hard"
+    input_dim = 2
+    task_type = "control"
+
+    def sample_episode(self, support_size: int, query_size: int, generator: Optional[torch.Generator] = None):
+        total = support_size + query_size
+        states = _sample_points(total, 2.5, generator)
+        k1 = _rand_uniform((1,), 1.8, 3.6, generator).item()
+        k2 = _rand_uniform((1,), 1.0, 2.8, generator).item()
+        actions = -k1 * states[:, 0:1] - k2 * states[:, 1:2]
+        actions = actions + 0.03 * _randn(actions.shape, generator)
+        return _split_episode(states, actions, support_size)
+
+    def reward(self, state: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
+        x, v = state[0], state[1]
+        return -(1.15 * x ** 2 + 0.2 * v ** 2 + 0.03 * action[0] ** 2)
+
+    def dynamics(self, state: torch.Tensor, action: torch.Tensor, dt: float = 0.05) -> torch.Tensor:
+        x, v = state[0], state[1]
+        x_next = x + v * dt
+        nonlin = 0.18 * x ** 2 - 0.04 * x ** 3 + 0.08 * torch.sin(2.0 * x)
+        v_next = v + (-1.1 * x - 0.18 * v + action[0] + nonlin) * dt
+        return torch.stack([x_next, v_next])
+
+
+class LinearControlNoisyShiftedFamily(RegressionFamily):
+    name = "linear_control_noisy_shifted"
+    input_dim = 2
+    task_type = "control"
+
+    def sample_episode(self, support_size: int, query_size: int, generator: Optional[torch.Generator] = None):
+        total = support_size + query_size
+        states = _sample_points(total, 2.6, generator)
+        self.k1 = _rand_uniform((1,), 1.6, 3.8, generator).item()
+        self.k2 = _rand_uniform((1,), 0.9, 2.7, generator).item()
+        actions = -self.k1 * states[:, 0:1] - self.k2 * states[:, 1:2]
+        actions = actions + 0.04 * _randn(actions.shape, generator)
+        return _split_episode(states, actions, support_size)
+
+    def reward(self, state: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
+        x, v = state[0], state[1]
+        return -(1.1 * x ** 2 + 0.18 * v ** 2 + 0.03 * action[0] ** 2)
+
+    def dynamics(self, state: torch.Tensor, action: torch.Tensor, dt: float = 0.05) -> torch.Tensor:
+        x, v = state[0], state[1]
+        process_noise = 0.03 * torch.tanh(2.0 * x) + 0.015 * torch.sin(3.0 * v)
+        x_next = x + v * dt
+        v_next = v + (-1.15 * x - 0.15 * v + action[0] + process_noise) * dt
+        return torch.stack([x_next, v_next])
+
+
+class VanDerPolControlFamily(RegressionFamily):
+    name = "van_der_pol"
+    input_dim = 2
+    task_type = "control"
+
+    def sample_episode(self, support_size: int, query_size: int, generator: Optional[torch.Generator] = None):
+        total = support_size + query_size
+        states = _sample_points(total, 2.5, generator)
+        self.mu = _rand_uniform((1,), 0.2, 1.2, generator).item()
+        k1 = _rand_uniform((1,), 1.2, 2.8, generator).item()
+        k2 = _rand_uniform((1,), 0.6, 2.0, generator).item()
+        actions = -k1 * states[:, 0:1] - k2 * states[:, 1:2]
+        actions = actions + 0.02 * _randn(actions.shape, generator)
+        return _split_episode(states, actions, support_size)
+
+    def reward(self, state: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
+        x, v = state[0], state[1]
+        return -(x ** 2 + 0.1 * v ** 2 + 0.01 * action[0] ** 2)
+
+    def dynamics(self, state: torch.Tensor, action: torch.Tensor, dt: float = 0.05) -> torch.Tensor:
+        x, v = state[0], state[1]
+        x_next = x + v * dt
+        v_next = v + (self.mu * (1.0 - x ** 2) * v - x + action[0]) * dt
+        return torch.stack([x_next, v_next])
+
+
+class DuffingControlFamily(RegressionFamily):
+    name = "duffing_control"
+    input_dim = 2
+    task_type = "control"
+
+    def sample_episode(self, support_size: int, query_size: int, generator: Optional[torch.Generator] = None):
+        total = support_size + query_size
+        states = _sample_points(total, 2.0, generator)
+        self.alpha = _rand_uniform((1,), -0.5, 0.5, generator).item()
+        self.beta = _rand_uniform((1,), 0.5, 1.5, generator).item()
+        k1 = _rand_uniform((1,), 1.5, 3.5, generator).item()
+        k2 = _rand_uniform((1,), 0.8, 2.2, generator).item()
+        actions = -k1 * states[:, 0:1] - k2 * states[:, 1:2]
+        actions = actions + 0.02 * _randn(actions.shape, generator)
+        return _split_episode(states, actions, support_size)
+
+    def reward(self, state: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
+        x, v = state[0], state[1]
+        return -(x ** 2 + 0.1 * v ** 2 + 0.01 * action[0] ** 2)
+
+    def dynamics(self, state: torch.Tensor, action: torch.Tensor, dt: float = 0.05) -> torch.Tensor:
+        x, v = state[0], state[1]
+        x_next = x + v * dt
+        v_next = v + (-self.alpha * x - self.beta * x ** 3 - 0.1 * v + action[0]) * dt
+        return torch.stack([x_next, v_next])
+
+
+class DoubleIntegratorFamily(RegressionFamily):
+    name = "double_integrator"
+    input_dim = 2
+    task_type = "control"
+
+    def sample_episode(self, support_size: int, query_size: int, generator: Optional[torch.Generator] = None):
+        total = support_size + query_size
+        states = _sample_points(total, 2.0, generator)
+        k1 = _rand_uniform((1,), 1.0, 3.0, generator).item()
+        k2 = _rand_uniform((1,), 1.5, 3.5, generator).item()
+        actions = -k1 * states[:, 0:1] - k2 * states[:, 1:2]
+        actions = actions + 0.01 * _randn(actions.shape, generator)
+        return _split_episode(states, actions, support_size)
+
+    def reward(self, state: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
+        x, v = state[0], state[1]
+        return -(x ** 2 + 0.05 * v ** 2 + 0.005 * action[0] ** 2)
+
+    def dynamics(self, state: torch.Tensor, action: torch.Tensor, dt: float = 0.05) -> torch.Tensor:
+        x, v = state[0], state[1]
+        x_next = x + v * dt
+        v_next = v + action[0] * dt
+        return torch.stack([x_next, v_next])
+
+
+class OverdampedControlFamily(RegressionFamily):
+    name = "overdamped_control"
+    input_dim = 2
+    task_type = "control"
+
+    def sample_episode(self, support_size: int, query_size: int, generator: Optional[torch.Generator] = None):
+        total = support_size + query_size
+        states = _sample_points(total, 2.2, generator)
+        self.k1 = _rand_uniform((1,), 0.8, 2.0, generator).item()
+        self.k2 = _rand_uniform((1,), 2.5, 5.0, generator).item()
+        actions = -self.k1 * states[:, 0:1] - self.k2 * states[:, 1:2]
+        actions = actions + 0.01 * _randn(actions.shape, generator)
+        return _split_episode(states, actions, support_size)
+
+    def reward(self, state: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
+        x, v = state[0], state[1]
+        return -(x ** 2 + 0.3 * v ** 2 + 0.02 * action[0] ** 2)
+
+    def dynamics(self, state: torch.Tensor, action: torch.Tensor, dt: float = 0.05) -> torch.Tensor:
+        x, v = state[0], state[1]
+        x_next = x + v * dt
+        v_next = v + (-x - 0.8 * v + action[0]) * dt
+        return torch.stack([x_next, v_next])
+
+
+class AsymmetricControlFamily(RegressionFamily):
+    name = "asymmetric_control"
+    input_dim = 2
+    task_type = "control"
+
+    def sample_episode(self, support_size: int, query_size: int, generator: Optional[torch.Generator] = None):
+        total = support_size + query_size
+        states = _sample_points(total, 2.0, generator)
+        self.kp = _rand_uniform((1,), 1.0, 3.0, generator).item()
+        self.kn = _rand_uniform((1,), 0.3, 1.5, generator).item()
+        self.kv = _rand_uniform((1,), 0.5, 1.8, generator).item()
+        pos_mask = (states[:, 0:1] > 0).float()
+        actions = -(self.kp * pos_mask + self.kn * (1.0 - pos_mask)) * states[:, 0:1] - self.kv * states[:, 1:2]
+        actions = actions + 0.02 * _randn(actions.shape, generator)
+        return _split_episode(states, actions, support_size)
+
+    def reward(self, state: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
+        x, v = state[0], state[1]
+        return -(x ** 2 + 0.1 * v ** 2 + 0.01 * action[0] ** 2)
+
+    def dynamics(self, state: torch.Tensor, action: torch.Tensor, dt: float = 0.05) -> torch.Tensor:
+        x, v = state[0], state[1]
+        restoring = torch.where(x > 0, -1.5 * x, -0.7 * x)
+        x_next = x + v * dt
+        v_next = v + (restoring - 0.1 * v + action[0]) * dt
+        return torch.stack([x_next, v_next])
+
+
 REGRESSION_FAMILIES: Dict[str, TaskFamily] = {
     family.name: family()
     for family in [
@@ -716,6 +1144,10 @@ REGRESSION_FAMILIES: Dict[str, TaskFamily] = {
         SawtoothRegressionFamily,
         CubicRegressionFamily,
         AbsRegressionFamily,
+        DampedSineFamily,
+        GaussianBumpFamily,
+        StepRegressionFamily,
+        ExpRegressionFamily,
     ]
 }
 
@@ -728,6 +1160,10 @@ REGRESSION_FAMILIES_CLASSES: Dict[str, type] = {
         SawtoothRegressionFamily,
         CubicRegressionFamily,
         AbsRegressionFamily,
+        DampedSineFamily,
+        GaussianBumpFamily,
+        StepRegressionFamily,
+        ExpRegressionFamily,
     ]
 }
 
@@ -737,7 +1173,16 @@ CONTROL_FAMILIES: Dict[str, TaskFamily] = {
         LinearControlFamily,
         LinearControlShiftedFamily,
         NonlinearControlFamily,
+        LinearControlStiffFamily,
+        LinearControlDriftFamily,
+        NonlinearControlHardFamily,
+        LinearControlNoisyShiftedFamily,
         PendulumControlFamily,
+        VanDerPolControlFamily,
+        DuffingControlFamily,
+        DoubleIntegratorFamily,
+        OverdampedControlFamily,
+        AsymmetricControlFamily,
     ]
 }
 
@@ -747,7 +1192,16 @@ CONTROL_FAMILIES_CLASSES: Dict[str, type] = {
         LinearControlFamily,
         LinearControlShiftedFamily,
         NonlinearControlFamily,
+        LinearControlStiffFamily,
+        LinearControlDriftFamily,
+        NonlinearControlHardFamily,
+        LinearControlNoisyShiftedFamily,
         PendulumControlFamily,
+        VanDerPolControlFamily,
+        DuffingControlFamily,
+        DoubleIntegratorFamily,
+        OverdampedControlFamily,
+        AsymmetricControlFamily,
     ]
 }
 
@@ -757,6 +1211,9 @@ BANDIT_FAMILIES: Dict[str, TaskFamily] = {
         BanditLinearFamily,
         BanditQuadraticFamily,
         BanditShiftedFamily,
+        BanditSineRadialFamily,
+        BanditGaussianFamily,
+        BanditCubicFamily,
     ]
 }
 
@@ -766,6 +1223,9 @@ BANDIT_FAMILIES_CLASSES: Dict[str, type] = {
         BanditLinearFamily,
         BanditQuadraticFamily,
         BanditShiftedFamily,
+        BanditSineRadialFamily,
+        BanditGaussianFamily,
+        BanditCubicFamily,
     ]
 }
 
@@ -774,22 +1234,55 @@ DEFAULT_REGRESSION_TRAIN_FAMILIES = [
     "piecewise_regression",
     "quadratic_regression",
     "sawtooth_regression",
+    "damped_sine",
+    "gaussian_bump",
 ]
-DEFAULT_REGRESSION_EVAL_FAMILIES = ["cubic_regression", "abs_regression"]
+DEFAULT_REGRESSION_EVAL_FAMILIES = ["cubic_regression", "abs_regression", "step_regression", "exp_regression"]
 REGRESSION_TRAIN_GROUPS: Dict[str, List[str]] = {
     "core": DEFAULT_REGRESSION_TRAIN_FAMILIES,
     "held_out": DEFAULT_REGRESSION_EVAL_FAMILIES,
 }
 
-DEFAULT_CONTROL_TRAIN_FAMILIES = ["linear_control"]
-DEFAULT_CONTROL_EVAL_FAMILIES = ["linear_control_shifted"]
+DEFAULT_CONTROL_TRAIN_FAMILIES = [
+    "linear_control",
+    "nonlinear_control",
+    "linear_control_stiff",
+    "linear_control_drift",
+    "van_der_pol",
+    "duffing_control",
+    "double_integrator",
+    "overdamped_control",
+]
+DEFAULT_CONTROL_EVAL_FAMILIES = [
+    "linear_control_shifted",
+    "nonlinear_control_hard",
+    "linear_control_noisy_shifted",
+    "asymmetric_control",
+    "pendulum_control",
+]
 CONTROL_TRAIN_GROUPS: Dict[str, List[str]] = {
     "core": DEFAULT_CONTROL_TRAIN_FAMILIES,
     "held_out": DEFAULT_CONTROL_EVAL_FAMILIES,
 }
 
-DEFAULT_BANDIT_TRAIN_FAMILIES = ["bandit_linear", "bandit_quadratic"]
-DEFAULT_BANDIT_EVAL_FAMILIES = ["bandit_shifted"]
+TASK_TEXT_DESCRIPTIONS: Dict[str, str] = {
+    "linear_control": "Linear second-order control task with state [position, velocity]. Stabilize near zero using smooth negative feedback control.",
+    "linear_control_shifted": "Shifted linear second-order control task with changed gain ranges. Stabilize position and velocity near zero under mild dynamics shift.",
+    "nonlinear_control": "Nonlinear control task with quadratic state coupling in acceleration dynamics. Learn corrective control from support trajectories.",
+    "linear_control_stiff": "Stiff linear oscillator control with stronger restoring force and damping. Requires precise actions to avoid overshoot.",
+    "linear_control_drift": "Linear control with structured state-dependent drift disturbance. Policy must compensate for sinusoidal and multiplicative drift.",
+    "nonlinear_control_hard": "Hard nonlinear control regime with stronger polynomial and sinusoidal dynamics. Robust stabilization under sharper nonlinearities.",
+    "linear_control_noisy_shifted": "Shifted linear control with process perturbations and noisier actions. Generalize to noisy, shifted dynamics.",
+    "pendulum_control": "Pendulum swing stabilization task using [cos(theta), sin(theta), angular velocity] state representation.",
+    "van_der_pol": "Van der Pol oscillator control with nonlinear damping. Mu parameter varies the limit cycle strength. Stabilize near origin.",
+    "duffing_control": "Duffing oscillator control with cubic nonlinearity. Alpha and beta parameters vary the double-well potential shape.",
+    "double_integrator": "Pure double integrator control. No natural restoring force; requires policy to provide all stabilization.",
+    "overdamped_control": "Overdamped linear control with heavy velocity damping. Critically or over-damped dynamics require low-gain stabilization.",
+    "asymmetric_control": "Asymmetric control task with different restoring forces for positive and negative positions. Policy must account for left-right asymmetry.",
+}
+
+DEFAULT_BANDIT_TRAIN_FAMILIES = ["bandit_linear", "bandit_quadratic", "bandit_sine_radial", "bandit_gaussian"]
+DEFAULT_BANDIT_EVAL_FAMILIES = ["bandit_shifted", "bandit_cubic"]
 BANDIT_TRAIN_GROUPS: Dict[str, List[str]] = {
     "core": DEFAULT_BANDIT_TRAIN_FAMILIES,
     "held_out": DEFAULT_BANDIT_EVAL_FAMILIES,

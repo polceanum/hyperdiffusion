@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import shutil
 import time
@@ -32,7 +33,7 @@ from .tasks import (
     EXPANDED_TRAIN_FAMILIES,
     ORIGINAL_TRAIN_GROUPS,
     REGRESSION_TRAIN_GROUPS,
-    CONTROL_FAMILIES,
+    TASK_TEXT_DESCRIPTIONS,
     EpisodeBatch,
     make_episode_batch,
 )
@@ -75,6 +76,11 @@ class ExperimentConfig:
     selector_hidden: int = 128
     selector_lr: float = 1e-3
     selector_num_samples: int = 8
+    encoding_mode: str = "support"
+    text_embedding_dim: int = 128
+    text_mix_alpha: float = 0.5
+    reward_audit_batches: int = 8
+    reward_audit_batch_size: int = 16
     device: str = "cpu"
     seed: int = 0
 
@@ -126,6 +132,17 @@ class Experiment:
             y_dim=1,
         ).to(self.device)
 
+        self.encoding_mode = config.encoding_mode
+        self.text_embedding_dim = config.text_embedding_dim
+        self.text_mix_alpha = config.text_mix_alpha
+        self.text_projector = torch.nn.Sequential(
+            torch.nn.Linear(self.text_embedding_dim, config.encoder_hidden),
+            torch.nn.SiLU(),
+            torch.nn.Linear(config.encoder_hidden, config.cond_dim + config.latent_dim),
+        ).to(self.device)
+        family_set = set(config.families or []) | set(config.eval_families or []) | set(TASK_TEXT_DESCRIPTIONS.keys())
+        self.family_to_index = {name: idx for idx, name in enumerate(sorted(family_set))}
+
         # Ablation baseline with no hypernetwork / fast weights
         from .models import BaselineNetwork
         self.baseline = BaselineNetwork(input_dim=input_dim, output_dim=1, hidden_dim=config.encoder_hidden, depth=4).to(self.device)
@@ -143,9 +160,56 @@ class Experiment:
             self.selector = CandidateSelector(cond_dim=config.cond_dim, latent_dim=config.latent_dim, hidden_dim=config.selector_hidden).to(self.device)
             self.opt_selector = torch.optim.AdamW(self.selector.parameters(), lr=config.selector_lr)
 
-        self.opt_stage1 = torch.optim.AdamW(self.system.parameters(), lr=config.learning_rate_stage1)
+        stage1_params = list(self.system.parameters()) + list(self.text_projector.parameters())
+        self.opt_stage1 = torch.optim.AdamW(stage1_params, lr=config.learning_rate_stage1)
         self.opt_stage2 = torch.optim.AdamW(self.denoiser.parameters(), lr=config.learning_rate_stage2)
         self.generator = torch.Generator().manual_seed(config.seed)
+
+    def _family_description(self, family_name: str) -> str:
+        return TASK_TEXT_DESCRIPTIONS.get(family_name, f"Task family {family_name.replace('_', ' ')}")
+
+    def _text_embedding(self, family_names: List[str]) -> torch.Tensor:
+        emb = torch.zeros((len(family_names), self.text_embedding_dim), dtype=torch.float32, device=self.device)
+        for i, family_name in enumerate(family_names):
+            text = self._family_description(family_name).lower()
+            tokens = [tok for tok in text.replace(".", " ").replace(",", " ").replace("[", " ").replace("]", " ").split() if tok]
+            if not tokens:
+                tokens = [family_name]
+            for token in tokens:
+                digest = hashlib.md5(token.encode("utf-8")).hexdigest()
+                idx = int(digest[:8], 16) % self.text_embedding_dim
+                emb[i, idx] += 1.0
+            emb[i] = emb[i] / emb[i].norm(p=2).clamp_min(1e-6)
+        return emb
+
+    def _encode_batch(self, support_x: torch.Tensor, support_y: torch.Tensor, family_names: List[str]) -> tuple[torch.Tensor, torch.Tensor]:
+        context_support, latent_support = self.system.encode(support_x, support_y)
+        mode = self.encoding_mode
+        if mode == "support":
+            return context_support, latent_support
+
+        if mode == "oracle":
+            indices = torch.tensor([self.family_to_index.get(name, 0) for name in family_names], device=self.device, dtype=torch.long)
+            one_hot = F.one_hot(indices, num_classes=max(len(self.family_to_index), 1)).float()
+            target_dim = self.config.cond_dim + self.config.latent_dim
+            if one_hot.shape[-1] < target_dim:
+                one_hot = F.pad(one_hot, (0, target_dim - one_hot.shape[-1]))
+            oracle = one_hot[:, :target_dim]
+            context_oracle, latent_oracle = torch.split(oracle, [self.config.cond_dim, self.config.latent_dim], dim=-1)
+            return context_oracle, latent_oracle
+
+        text_embed = self._text_embedding(family_names)
+        text_proj = self.text_projector(text_embed)
+        context_text, latent_text = torch.split(text_proj, [self.config.cond_dim, self.config.latent_dim], dim=-1)
+
+        if mode == "text":
+            return context_text, latent_text
+        if mode == "hybrid":
+            alpha = float(self.text_mix_alpha)
+            context = (1.0 - alpha) * context_support + alpha * context_text
+            latent = (1.0 - alpha) * latent_support + alpha * latent_text
+            return context, latent
+        raise ValueError(f"Unknown encoding_mode: {mode}")
 
     def sample_batch(self, support_size: Optional[int] = None, family_names: Optional[List[str]] = None, batch_size: Optional[int] = None) -> EpisodeBatch:
         return make_episode_batch(
@@ -191,7 +255,7 @@ class Experiment:
     def stage1_step(self, batch: EpisodeBatch) -> Dict[str, float]:
         self.system.train()
         batch = self.to_device(batch)
-        context, latent = self.system.encode(batch.support_x, batch.support_y)
+        context, latent = self._encode_batch(batch.support_x, batch.support_y, batch.family_name)
         params = self.system.decode(latent, context)
         pred = functional_target_network(batch.query_x, params)
         task_loss = self._task_loss(pred, batch.query_y)
@@ -231,7 +295,7 @@ class Experiment:
         self.system.eval()
         batch = self.to_device(batch)
         with torch.no_grad():
-            context, latent = self.system.encode(batch.support_x, batch.support_y)
+            context, latent = self._encode_batch(batch.support_x, batch.support_y, batch.family_name)
 
         b = latent.shape[0]
         t_idx = torch.randint(0, self.schedule.num_steps, (b,), device=self.device)
@@ -328,7 +392,7 @@ class Experiment:
 
         for _ in range(num_batches):
             batch = self.to_device(self.sample_batch(family_names=families))
-            context, latent = self.system.encode(batch.support_x, batch.support_y)
+            context, latent = self._encode_batch(batch.support_x, batch.support_y, batch.family_name)
             pred_enc, metric_enc, _ = self._decode_and_score(batch.query_x, batch.query_y, latent, context)
             loss_enc = self._item_loss(pred_enc, batch.query_y)
 
@@ -476,7 +540,8 @@ class Experiment:
                 if not any(mismatch_mask):
                     continue
                 idx = torch.tensor(mismatch_mask, device=self.device)
-                context, latent = self.system.encode(support_batch.support_x[idx], support_batch.support_y[idx])
+                support_names = [name for keep, name in zip(mismatch_mask, support_batch.family_name) if keep]
+                context, latent = self._encode_batch(support_batch.support_x[idx], support_batch.support_y[idx], support_names)
                 pred_enc, metric_enc, _ = self._decode_and_score(query_batch.query_x[idx], query_batch.query_y[idx], latent, context)
                 z = ddim_sample(self.denoiser, self.schedule, context, num_steps=self.config.num_diffusion_steps)
                 pred_diff, metric_diff, _ = self._decode_and_score(query_batch.query_x[idx], query_batch.query_y[idx], z, context)
@@ -488,7 +553,7 @@ class Experiment:
             enc_vals, diff_vals = [], []
             for _ in range(self.config.support_sweep_batches):
                 batch = self.to_device(self.sample_batch(support_size=size, family_names=families))
-                context, latent = self.system.encode(batch.support_x, batch.support_y)
+                context, latent = self._encode_batch(batch.support_x, batch.support_y, batch.family_name)
                 pred_enc, metric_enc, _ = self._decode_and_score(batch.query_x, batch.query_y, latent, context)
                 enc_vals.extend(metric_enc.tolist())
                 sample_metrics = []
@@ -523,7 +588,7 @@ class Experiment:
     @torch.no_grad()
     def _plot_classification_batch(self, batch: EpisodeBatch, prefix: str) -> List[str]:
         paths: List[str] = []
-        context, latent = self.system.encode(batch.support_x, batch.support_y)
+        context, latent = self._encode_batch(batch.support_x, batch.support_y, batch.family_name)
         b = batch.support_x.shape[0]
         grid_size = self.config.visualization_grid_size
         grid_lin = torch.linspace(-2.4, 2.4, grid_size, device=self.device)
@@ -551,7 +616,7 @@ class Experiment:
         baseline_gap = (best_grid - baseline_grid).abs()
 
         for i in range(b):
-            fig, axes = plt.subplots(1, 6, figsize=(24, 4), constrained_layout=True)
+            fig, axes = plt.subplots(1, 6, figsize=(15, 2.5), constrained_layout=True)
             best_acc_i = acc_stack[i, best_idx[i]].item()
             base_acc_i = baseline_acc[i].item()
             panels = [
@@ -565,19 +630,19 @@ class Experiment:
             for ax, (image, title) in zip(axes, panels):
                 ax.imshow(image.T, origin="lower", extent=(-2.4, 2.4, -2.4, 2.4), cmap="coolwarm", alpha=0.85)
                 sx = batch.support_x[i, :, 0].cpu().numpy(); sy = batch.support_x[i, :, 1].cpu().numpy(); sl = batch.support_y[i, :, 0].cpu().numpy()
-                ax.scatter(sx[sl < 0.5], sy[sl < 0.5], s=30, edgecolor="black", facecolor="tab:blue", linewidth=0.6)
-                ax.scatter(sx[sl > 0.5], sy[sl > 0.5], s=30, edgecolor="black", facecolor="tab:orange", linewidth=0.6)
-                ax.set_title(title); ax.set_xticks([]); ax.set_yticks([])
-            fig.suptitle(f"{prefix} | family={batch.family_name[i]} | Δ(best-static)={best_acc_i - base_acc_i:.3f}")
+                ax.scatter(sx[sl < 0.5], sy[sl < 0.5], s=12, edgecolor="black", facecolor="tab:blue", linewidth=0.4)
+                ax.scatter(sx[sl > 0.5], sy[sl > 0.5], s=12, edgecolor="black", facecolor="tab:orange", linewidth=0.4)
+                ax.set_title(title, fontsize=7); ax.set_xticks([]); ax.set_yticks([])
+            fig.suptitle(f"{prefix} | family={batch.family_name[i]} | Δ(best-static)={best_acc_i - base_acc_i:.3f}", fontsize=8)
             out = self.output_dir / "plots" / f"{prefix}_{i:02d}.png"
-            fig.savefig(out, dpi=140); plt.close(fig)
+            fig.savefig(out, dpi=90, bbox_inches='tight'); plt.close(fig)
             paths.append(str(out.relative_to(self.output_dir)))
         return paths
 
     @torch.no_grad()
     def _plot_regression_batch(self, batch: EpisodeBatch, prefix: str) -> List[str]:
         paths: List[str] = []
-        context, latent = self.system.encode(batch.support_x, batch.support_y)
+        context, latent = self._encode_batch(batch.support_x, batch.support_y, batch.family_name)
         b = batch.support_x.shape[0]
         input_dim = batch.support_x.shape[-1]
         
@@ -608,7 +673,7 @@ class Experiment:
             baseline_gap_curve = (best_curve - baseline_curve).abs()
 
             for i in range(b):
-                fig, axes = plt.subplots(1, 6, figsize=(24, 4), constrained_layout=True)
+                fig, axes = plt.subplots(1, 6, figsize=(15, 2.5), constrained_layout=True)
                 xg = grid_x[i, :, 0].cpu().numpy()
                 support_x = batch.support_x[i, :, 0].cpu().numpy()
                 support_y = batch.support_y[i, :, 0].cpu().numpy()
@@ -625,15 +690,15 @@ class Experiment:
                     (std_curve[i, :, 0].cpu().numpy(), "sample std"),
                 ]
                 for ax, (curve, title) in zip(axes, panels):
-                    ax.scatter(query_x, query_y, s=10, alpha=0.25, color="tab:gray")
-                    ax.scatter(support_x, support_y, s=28, color="tab:orange", edgecolors="black", linewidths=0.5)
-                    ax.plot(xg, curve, label=title)
-                    ax.set_title(title)
-                    ax.legend(fontsize=8)
+                    ax.scatter(query_x, query_y, s=5, alpha=0.25, color="tab:gray")
+                    ax.scatter(support_x, support_y, s=12, color="tab:orange", edgecolors="black", linewidths=0.4)
+                    ax.plot(xg, curve, lw=0.9)
+                    ax.set_title(title, fontsize=7)
+                    ax.tick_params(labelsize=6)
                 mode = "Evaluation (generalization)" if prefix.startswith("eval") else "Training (in-distribution)"
-                fig.suptitle(f"{prefix} | {mode} | family={batch.family_name[i]} | Δ(best-static)={best_r2_i - base_r2_i:.3f}")
+                fig.suptitle(f"{prefix} | {mode} | family={batch.family_name[i]} | Δ(best-static)={best_r2_i - base_r2_i:.3f}", fontsize=8)
                 out = self.output_dir / "plots" / f"{prefix}_{i:02d}.png"
-                fig.savefig(out, dpi=140); plt.close(fig)
+                fig.savefig(out, dpi=90, bbox_inches='tight'); plt.close(fig)
                 paths.append(str(out.relative_to(self.output_dir)))
         else:
             # 2D regression (bandit tasks) - use contour plots
@@ -714,9 +779,9 @@ class Experiment:
 
                 num_panels = len(surfaces)
                 if num_panels == 6:
-                    fig, axes = plt.subplots(2, 3, figsize=(18, 10), constrained_layout=True)
+                    fig, axes = plt.subplots(2, 3, figsize=(12, 7), constrained_layout=True)
                 else:
-                    fig, axes = plt.subplots(2, 3 if num_panels > 4 else 2, figsize=(18 if num_panels > 4 else 14, 10), constrained_layout=True)
+                    fig, axes = plt.subplots(2, 3 if num_panels > 4 else 2, figsize=(12 if num_panels > 4 else 9, 7), constrained_layout=True)
 
                 for ax, (surface, title, error) in zip(axes.flat, surfaces):
                     if surface is None:
@@ -731,23 +796,24 @@ class Experiment:
                     else:
                         img = ax.imshow(surface, origin="lower", extent=(-2.5, 2.5, -2.5, 2.5), cmap="viridis", vmin=global_vmin, vmax=global_vmax, aspect="equal")
                     ax.contour(surface, levels=12, colors="k", linewidths=0.6, extent=(-2.5, 2.5, -2.5, 2.5), alpha=0.6)
-                    ax.scatter(support_x, support_y, c=support_z, s=70, edgecolors="red", linewidth=1.2, cmap="RdYlBu", vmin=global_vmin, vmax=global_vmax)
+                    ax.scatter(support_x, support_y, c=support_z, s=30, edgecolors="red", linewidth=0.8, cmap="RdYlBu", vmin=global_vmin, vmax=global_vmax)
                     if error is not None:
-                        ax.scatter(query_x, query_y, c=error, s=50, alpha=0.9, marker="x", cmap="hot", vmin=0, vmax=error_vmax, edgecolors="k")
+                        ax.scatter(query_x, query_y, c=error, s=20, alpha=0.8, marker="x", cmap="hot", vmin=0, vmax=error_vmax, edgecolors="k")
                     else:
-                        ax.scatter(query_x, query_y, c=query_z, s=30, alpha=0.7, marker="x", cmap="RdYlBu", vmin=global_vmin, vmax=global_vmax)
-                    ax.set_title(title)
-                    ax.set_xlabel("x₁")
-                    ax.set_ylabel("x₂")
-                    fig.colorbar(img, ax=ax, shrink=0.72)
+                        ax.scatter(query_x, query_y, c=query_z, s=15, alpha=0.6, marker="x", cmap="RdYlBu", vmin=global_vmin, vmax=global_vmax)
+                    ax.set_title(title, fontsize=7)
+                    ax.set_xlabel("x₁", fontsize=6)
+                    ax.set_ylabel("x₂", fontsize=6)
+                    ax.tick_params(labelsize=5)
+                    fig.colorbar(img, ax=ax, shrink=0.65)
 
                 for ax in axes.flat[len(surfaces):]:
                     ax.axis("off")
 
                 mode = "Evaluation (generalization)" if prefix.startswith("eval") else "Training (in-distribution)"
-                fig.suptitle(f"{prefix} | {mode} | family={batch.family_name[i]} | Δ(best-static)={metric_stack[i, best_idx[i]].item() - baseline_metric[i].item():.3f}")
+                fig.suptitle(f"{prefix} | {mode} | family={batch.family_name[i]} | Δ(best-static)={metric_stack[i, best_idx[i]].item() - baseline_metric[i].item():.3f}", fontsize=8)
                 out = self.output_dir / "plots" / f"{prefix}_{i:02d}.png"
-                fig.savefig(out, dpi=140); plt.close(fig)
+                fig.savefig(out, dpi=90, bbox_inches='tight'); plt.close(fig)
                 paths.append(str(out.relative_to(self.output_dir)))
 
                 # Control-specific reward-over-time plot
@@ -775,19 +841,20 @@ class Experiment:
                         baseline_rollout = family.rollout(zero_action_policy, initial_state, num_steps=80, dt=0.05)
                         static_rollout = family.rollout(baseline_policy, initial_state, num_steps=80, dt=0.05)
 
-                        fig_r, ax_r = plt.subplots(figsize=(6, 4), constrained_layout=True)
-                        ax_r.plot(rollout_data["rewards"], label="learned policy step reward", color="tab:blue")
-                        ax_r.plot(rollout_data["cum_rewards"], label="learned policy cumulative reward", color="tab:orange")
-                        ax_r.plot(static_rollout["rewards"], label="static baseline step reward", color="tab:red", linestyle="--")
-                        ax_r.plot(static_rollout["cum_rewards"], label="static baseline cumulative reward", color="tab:red", linestyle=":")
-                        ax_r.plot(baseline_rollout["rewards"], label="zero-action baseline step reward", color="tab:green", linestyle="--")
-                        ax_r.plot(baseline_rollout["cum_rewards"], label="zero-action baseline cumulative reward", color="tab:green", linestyle=":")
-                        ax_r.set_xlabel("time step")
-                        ax_r.set_ylabel("higher is better")
-                        ax_r.set_title(f"{prefix} reward curve | family={batch.family_name[i]}")
-                        ax_r.legend()
+                        fig_r, ax_r = plt.subplots(figsize=(4.5, 2.8), constrained_layout=True)
+                        ax_r.plot(rollout_data["rewards"], label="learned step", color="tab:blue", lw=0.9)
+                        ax_r.plot(rollout_data["cum_rewards"], label="learned cum", color="tab:orange", lw=0.9)
+                        ax_r.plot(static_rollout["rewards"], label="static step", color="tab:red", linestyle="--", lw=0.8)
+                        ax_r.plot(static_rollout["cum_rewards"], label="static cum", color="tab:red", linestyle=":", lw=0.8)
+                        ax_r.plot(baseline_rollout["rewards"], label="zero step", color="tab:green", linestyle="--", lw=0.8)
+                        ax_r.plot(baseline_rollout["cum_rewards"], label="zero cum", color="tab:green", linestyle=":", lw=0.8)
+                        ax_r.set_xlabel("time step", fontsize=7)
+                        ax_r.set_ylabel("higher is better", fontsize=7)
+                        ax_r.set_title(f"{prefix} reward | family={batch.family_name[i]}", fontsize=7)
+                        ax_r.legend(fontsize=6, ncol=2)
+                        ax_r.tick_params(labelsize=6)
                         out_r = self.output_dir / "plots" / f"{prefix}_{i:02d}_reward.png"
-                        fig_r.savefig(out_r, dpi=140)
+                        fig_r.savefig(out_r, dpi=90, bbox_inches='tight')
                         plt.close(fig_r)
                         paths.append(str(out_r.relative_to(self.output_dir)))
 
@@ -812,8 +879,83 @@ class Experiment:
                 out[name] = {"families": active, "summary": self.evaluate(num_batches=self.config.eval_batches, family_names=active)}
         return out
 
+    @staticmethod
+    def _summarize_reward_rows(rows: List[Dict[str, float]]) -> Dict[str, float]:
+        if not rows:
+            return {
+                "episodes": 0,
+                "mean_delta_ls": 0.0,
+                "median_delta_ls": 0.0,
+                "win_rate_vs_static": 0.0,
+                "p10_delta_ls": 0.0,
+                "p90_delta_ls": 0.0,
+                "mean_delta_lz": 0.0,
+                "win_rate_vs_zero": 0.0,
+            }
+        dls = np.asarray([r["delta_ls"] for r in rows], dtype=float)
+        dlz = np.asarray([r["delta_lz"] for r in rows], dtype=float)
+        return {
+            "episodes": int(len(rows)),
+            "mean_delta_ls": float(dls.mean()),
+            "median_delta_ls": float(np.median(dls)),
+            "win_rate_vs_static": float((dls > 0).mean()),
+            "p10_delta_ls": float(np.quantile(dls, 0.10)),
+            "p90_delta_ls": float(np.quantile(dls, 0.90)),
+            "mean_delta_lz": float(dlz.mean()),
+            "win_rate_vs_zero": float((dlz > 0).mean()),
+        }
+
+    @torch.no_grad()
+    def _control_reward_audit(self, family_names: List[str], num_batches: int = 20, batch_size: int = 32) -> Dict[str, object]:
+        rows: List[Dict[str, float]] = []
+        for _ in range(num_batches):
+            batch = self.to_device(self.sample_batch(batch_size=batch_size, family_names=family_names))
+            context, latent = self._encode_batch(batch.support_x, batch.support_y, batch.family_name)
+            for i in range(batch.support_x.shape[0]):
+                family = CONTROL_FAMILIES.get(batch.family_name[i])
+                if family is None:
+                    continue
+                params = self.system.decode(latent[i : i + 1], context[i : i + 1])
+
+                def learned_policy(state: torch.Tensor) -> torch.Tensor:
+                    x_reshaped = state.view(1, 1, -1).to(self.device)
+                    action = functional_target_network(x_reshaped, params).squeeze().item()
+                    return torch.tensor([action], dtype=torch.float32)
+
+                def static_policy(state: torch.Tensor) -> torch.Tensor:
+                    action = self.baseline(state.view(1, -1).to(self.device)).squeeze().item()
+                    return torch.tensor([action], dtype=torch.float32)
+
+                def zero_policy(state: torch.Tensor) -> torch.Tensor:
+                    return torch.zeros(1, dtype=torch.float32)
+
+                initial_state = batch.support_x[i, 0]
+                learned = family.rollout(learned_policy, initial_state, num_steps=80, dt=0.05)
+                static = family.rollout(static_policy, initial_state, num_steps=80, dt=0.05)
+                zero = family.rollout(zero_policy, initial_state, num_steps=80, dt=0.05)
+                l_final = float(learned["cum_rewards"][-1])
+                s_final = float(static["cum_rewards"][-1])
+                z_final = float(zero["cum_rewards"][-1])
+                rows.append({
+                    "family": batch.family_name[i],
+                    "delta_ls": l_final - s_final,
+                    "delta_lz": l_final - z_final,
+                })
+
+        by_family: Dict[str, object] = {}
+        for family in sorted(set(r["family"] for r in rows)):
+            family_rows = [r for r in rows if r["family"] == family]
+            by_family[family] = self._summarize_reward_rows(family_rows)
+        return {"overall": self._summarize_reward_rows(rows), "by_family": by_family}
+
     def save_checkpoint(self) -> None:
-        payload = {"config": asdict(self.config), "system": self.system.state_dict(), "denoiser": self.denoiser.state_dict()}
+        payload = {
+            "config": asdict(self.config),
+            "system": self.system.state_dict(),
+            "denoiser": self.denoiser.state_dict(),
+            "baseline": self.baseline.state_dict(),
+            "text_projector": self.text_projector.state_dict(),
+        }
         torch.save(payload, self.output_dir / "checkpoint.pt")
 
     def run(self) -> Dict[str, object]:
@@ -835,9 +977,23 @@ class Experiment:
         summary = self.evaluate()
         summary["train_group_evals"] = self._group_evaluations()
         summary["artifacts"] = {"plots_train": self._plot_episode_set(self.config.families, "train")}
+        if self.config.task_type == "control":
+            summary["reward_audit"] = {
+                "train": self._control_reward_audit(
+                    self.config.families,
+                    num_batches=self.config.reward_audit_batches,
+                    batch_size=self.config.reward_audit_batch_size,
+                ),
+            }
         if self.config.eval_families:
             summary["generalization"] = {"eval_families": self.config.eval_families, "eval_summary": self.evaluate(num_batches=self.config.eval_batches, family_names=self.config.eval_families)}
             summary["artifacts"]["plots_eval"] = self._plot_episode_set(self.config.eval_families, "eval")
+            if self.config.task_type == "control":
+                summary["reward_audit"]["eval"] = self._control_reward_audit(
+                    self.config.eval_families,
+                    num_batches=self.config.reward_audit_batches,
+                    batch_size=self.config.reward_audit_batch_size,
+                )
         summary["runtime_seconds"] = time.time() - t0
         summary["config"] = asdict(self.config)
         with open(self.output_dir / "summary.json", "w", encoding="utf-8") as f:
@@ -895,6 +1051,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--visualization-count", type=int, default=4)
     p.add_argument("--visualization-grid-size", type=int, default=120)
     p.add_argument("--encoder-type", type=str, choices=["attention", "deepset"], default="attention")
+    p.add_argument("--encoding-mode", type=str, choices=["support", "text", "hybrid", "oracle"], default="support")
+    p.add_argument("--text-embedding-dim", type=int, default=128)
+    p.add_argument("--text-mix-alpha", type=float, default=0.5)
+    p.add_argument("--reward-audit-batches", type=int, default=8)
+    p.add_argument("--reward-audit-batch-size", type=int, default=16)
     p.add_argument("--attention-heads", type=int, default=4)
     p.add_argument("--attention-layers", type=int, default=3)
     p.add_argument("--support-sweep-batches", type=int, default=16)
@@ -958,6 +1119,11 @@ def main() -> None:
         selector_hidden=args.selector_hidden,
         selector_lr=args.selector_lr,
         selector_num_samples=args.selector_num_samples,
+        encoding_mode=args.encoding_mode,
+        text_embedding_dim=args.text_embedding_dim,
+        text_mix_alpha=args.text_mix_alpha,
+        reward_audit_batches=args.reward_audit_batches,
+        reward_audit_batch_size=args.reward_audit_batch_size,
         device=args.device,
         seed=args.seed,
     )
