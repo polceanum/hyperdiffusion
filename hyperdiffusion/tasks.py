@@ -1008,11 +1008,11 @@ class VanDerPolControlFamily(RegressionFamily):
     name = "van_der_pol"
     input_dim = 2
     task_type = "control"
+    mu = 0.7  # Fixed parameter (average of 0.2-1.2 range)
 
     def sample_episode(self, support_size: int, query_size: int, generator: Optional[torch.Generator] = None):
         total = support_size + query_size
         states = _sample_points(total, 2.5, generator)
-        self.mu = _rand_uniform((1,), 0.2, 1.2, generator).item()
         k1 = _rand_uniform((1,), 1.2, 2.8, generator).item()
         k2 = _rand_uniform((1,), 0.6, 2.0, generator).item()
         actions = -k1 * states[:, 0:1] - k2 * states[:, 1:2]
@@ -1034,12 +1034,12 @@ class DuffingControlFamily(RegressionFamily):
     name = "duffing_control"
     input_dim = 2
     task_type = "control"
+    alpha = 0.0  # Fixed parameter (average of -0.5 to 0.5 range)
+    beta = 1.0   # Fixed parameter (average of 0.5 to 1.5 range)
 
     def sample_episode(self, support_size: int, query_size: int, generator: Optional[torch.Generator] = None):
         total = support_size + query_size
         states = _sample_points(total, 2.0, generator)
-        self.alpha = _rand_uniform((1,), -0.5, 0.5, generator).item()
-        self.beta = _rand_uniform((1,), 0.5, 1.5, generator).item()
         k1 = _rand_uniform((1,), 1.5, 3.5, generator).item()
         k2 = _rand_uniform((1,), 0.8, 2.2, generator).item()
         actions = -k1 * states[:, 0:1] - k2 * states[:, 1:2]
@@ -1090,9 +1090,10 @@ class OverdampedControlFamily(RegressionFamily):
     def sample_episode(self, support_size: int, query_size: int, generator: Optional[torch.Generator] = None):
         total = support_size + query_size
         states = _sample_points(total, 2.2, generator)
-        self.k1 = _rand_uniform((1,), 0.8, 2.0, generator).item()
-        self.k2 = _rand_uniform((1,), 2.5, 5.0, generator).item()
-        actions = -self.k1 * states[:, 0:1] - self.k2 * states[:, 1:2]
+        # Use fixed average parameters for consistency with dynamics()
+        k1 = 1.4  # Fixed (average of 0.8-2.0 range)
+        k2 = 3.75  # Fixed (average of 2.5-5.0 range)
+        actions = -k1 * states[:, 0:1] - k2 * states[:, 1:2]
         actions = actions + 0.01 * _randn(actions.shape, generator)
         return _split_episode(states, actions, support_size)
 
@@ -1111,13 +1112,13 @@ class AsymmetricControlFamily(RegressionFamily):
     name = "asymmetric_control"
     input_dim = 2
     task_type = "control"
+    kp = 2.0  # Fixed (average of 1.0-3.0 range)
+    kn = 0.9  # Fixed (average of 0.3-1.5 range)
+    kv = 1.15  # Fixed (average of 0.5-1.8 range)
 
     def sample_episode(self, support_size: int, query_size: int, generator: Optional[torch.Generator] = None):
         total = support_size + query_size
         states = _sample_points(total, 2.0, generator)
-        self.kp = _rand_uniform((1,), 1.0, 3.0, generator).item()
-        self.kn = _rand_uniform((1,), 0.3, 1.5, generator).item()
-        self.kv = _rand_uniform((1,), 0.5, 1.8, generator).item()
         pos_mask = (states[:, 0:1] > 0).float()
         actions = -(self.kp * pos_mask + self.kn * (1.0 - pos_mask)) * states[:, 0:1] - self.kv * states[:, 1:2]
         actions = actions + 0.02 * _randn(actions.shape, generator)
@@ -1258,7 +1259,6 @@ DEFAULT_CONTROL_EVAL_FAMILIES = [
     "nonlinear_control_hard",
     "linear_control_noisy_shifted",
     "asymmetric_control",
-    "pendulum_control",
 ]
 CONTROL_TRAIN_GROUPS: Dict[str, List[str]] = {
     "core": DEFAULT_CONTROL_TRAIN_FAMILIES,
