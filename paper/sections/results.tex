@@ -1,9 +1,26 @@
 \section{Results}
 
 \input{tables/main_results}
+\paragraph{Control reward semantics.}
+For the control tasks we report cost-style reward functions (negative quadratic cost). Under this convention, more positive / less negative cumulative reward is better (i.e., lower control cost). In practical terms, performance is judged by how close step rewards stay to zero (less penalty) and how quickly cumulative reward stops decreasing.
+
+\paragraph{Train vs test (generalization).}
+Training plots show model behavior on in-distribution family sets; evaluation plots show held-out generalization performance. Prefixes in figure files (\texttt{train\_} vs \texttt{eval\_}) and suptitles make this explicit, helping readers distinguish between adaptation and transfer evaluation.
 
 \begin{figure}[h]
 \centering
 \includegraphics[width=0.6\linewidth]{figures/plots/support_sweep.png}
 \caption{Support-size sweep.}
+\end{figure}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.8\linewidth]{figures/plots/train_06_bandit_quadratic.png}
+\caption{Training example 7: Bandit quadratic task showing 2D surface with support (orange) and query (gray) points.}
+\end{figure}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.8\linewidth]{figures/plots/train_00_nonlinear_control.png}
+\caption{Training example 1: Nonlinear control task showing optimal policy surface for nonlinear dynamics (\(\dot{x} = v\), \(\dot{v} = -x - 0.1v + u + 0.1x^2\)).}
 \end{figure}

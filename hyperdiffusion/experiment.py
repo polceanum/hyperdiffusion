@@ -11,22 +11,28 @@ from typing import Dict, List, Optional
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import numpy as np
 import torch
 import torch.nn.functional as F
 
 from .diffusion import DiffusionSchedule, ddim_sample
 from .models import CandidateSelector, DiffusionDenoiser, HyperNetworkSystem, TargetArchitecture, functional_target_network
 from .tasks import (
+    BANDIT_FAMILIES,
     BANDIT_TRAIN_GROUPS,
-    BANDIT_TRAIN_GROUPS,
+    CONTROL_FAMILIES,
+    CONTROL_TRAIN_GROUPS,
     DEFAULT_BANDIT_EVAL_FAMILIES,
     DEFAULT_BANDIT_TRAIN_FAMILIES,
+    DEFAULT_CONTROL_EVAL_FAMILIES,
+    DEFAULT_CONTROL_TRAIN_FAMILIES,
     DEFAULT_REGRESSION_EVAL_FAMILIES,
     DEFAULT_REGRESSION_TRAIN_FAMILIES,
     DEFAULT_TRAIN_FAMILIES,
     EXPANDED_TRAIN_FAMILIES,
     ORIGINAL_TRAIN_GROUPS,
     REGRESSION_TRAIN_GROUPS,
+    CONTROL_FAMILIES,
     EpisodeBatch,
     make_episode_batch,
 )
@@ -102,6 +108,8 @@ class Experiment:
             input_dim = 2
         elif config.task_type in ("regression", "bandit_regression"):
             input_dim = 2 if config.task_type == "bandit_regression" else 1
+        elif config.task_type == "control":
+            input_dim = 2  # state dimension for control tasks
         else:
             raise ValueError(f"Unknown task_type: {config.task_type}")
         self.arch = TargetArchitecture(in_dim=input_dim, hidden_dim=config.target_hidden_dim, depth=config.target_depth)
@@ -151,6 +159,7 @@ class Experiment:
             query_x=batch.query_x.to(self.device),
             query_y=batch.query_y.to(self.device),
             family_name=batch.family_name,
+            family_instances=batch.family_instances,
         )
 
     def _task_loss(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
@@ -332,7 +341,7 @@ class Experiment:
                 selected_metric = metric_diff
                 selected_pred = pred_stack[:, 0]
 
-            if self.config.task_type in ("regression", "bandit_regression"):
+            if self.config.task_type in ("regression", "bandit_regression", "control"):
                 pred_mean = pred_stack.mean(dim=1)
                 pred_var = pred_stack.var(dim=1, unbiased=False)
                 se_mean = (pred_mean - batch.query_y).pow(2)
@@ -561,9 +570,11 @@ class Experiment:
                 for ax, (curve, title) in zip(axes, panels):
                     ax.scatter(query_x, query_y, s=10, alpha=0.25, color="tab:gray")
                     ax.scatter(support_x, support_y, s=28, color="tab:orange", edgecolors="black", linewidths=0.5)
-                    ax.plot(xg, curve)
+                    ax.plot(xg, curve, label=title)
                     ax.set_title(title)
-                fig.suptitle(f"{prefix} | family={batch.family_name[i]}")
+                    ax.legend(fontsize=8)
+                mode = "Evaluation (generalization)" if prefix.startswith("eval") else "Training (in-distribution)"
+                fig.suptitle(f"{prefix} | {mode} | family={batch.family_name[i]}")
                 out = self.output_dir / "plots" / f"{prefix}_{i:02d}_{batch.family_name[i]}.png"
                 fig.savefig(out, dpi=140); plt.close(fig)
                 paths.append(str(out.relative_to(self.output_dir)))
@@ -578,26 +589,38 @@ class Experiment:
             pred_enc = functional_target_network(batch.query_x, self.system.decode(latent, context))
             metric_enc = self._item_metric(pred_enc, batch.query_y)
 
-            surface_list, metric_list = [], []
+            surface_list, metric_list, pred_list = [], [], []
             for _ in range(self.config.diagnostic_samples):
                 z = ddim_sample(self.denoiser, self.schedule, context, num_steps=self.config.num_diffusion_steps)
                 params = self.system.decode(z, context)
                 surface_list.append(functional_target_network(grid_2d, params).reshape(b, grid_size, grid_size))
-                metric_list.append(self._item_metric(functional_target_network(batch.query_x, params), batch.query_y))
+                pred = functional_target_network(batch.query_x, params)
+                pred_list.append(pred)
+                metric_list.append(self._item_metric(pred, batch.query_y))
 
             surface_stack = torch.stack(surface_list, dim=1)
+            pred_stack = torch.stack(pred_list, dim=1)
             metric_stack = torch.stack(metric_list, dim=1)
             best_idx = metric_stack.argmax(dim=1)
             best_surface = surface_stack[torch.arange(b, device=self.device), best_idx]
             mean_surface = surface_stack.mean(dim=1)
             std_surface = surface_stack.std(dim=1)
 
+            # Compute ground truth surface if available
+            gt_surfaces = []
+            for i in range(b):
+                family = batch.family_instances[i] if batch.family_instances else None
+                if family and hasattr(family, 'f'):
+                    gt_surf = family.f(grid_2d[i]).squeeze().reshape(grid_size, grid_size).cpu().numpy()
+                else:
+                    gt_surf = None
+                gt_surfaces.append(gt_surf)
+
             global_vmin = torch.cat([enc_surface.flatten(), best_surface.flatten(), mean_surface.flatten()]).min().item()
             global_vmax = torch.cat([enc_surface.flatten(), best_surface.flatten(), mean_surface.flatten()]).max().item()
             std_vmax = std_surface.max().item() if std_surface.numel() > 0 else 1.0
 
             for i in range(b):
-                fig, axes = plt.subplots(2, 2, figsize=(14, 10), constrained_layout=True)
                 support_x = batch.support_x[i, :, 0].cpu().numpy()
                 support_y = batch.support_x[i, :, 1].cpu().numpy()
                 support_z = batch.support_y[i, :, 0].cpu().numpy()
@@ -605,30 +628,90 @@ class Experiment:
                 query_y = batch.query_x[i, :, 1].cpu().numpy()
                 query_z = batch.query_y[i, :, 0].cpu().numpy()
 
-                surfaces = [
-                    (enc_surface[i].cpu().numpy(), f"encoder r2={metric_enc[i].item():.3f}"),
-                    (best_surface[i].cpu().numpy(), f"best r2={metric_stack[i, best_idx[i]].item():.3f}"),
-                    (mean_surface[i].cpu().numpy(), "diffusion mean"),
-                    (std_surface[i].cpu().numpy(), "sample std"),
-                ]
+                # Compute errors for each surface
+                enc_pred = pred_enc[i].squeeze(-1).cpu().numpy()
+                best_pred = pred_stack[i, best_idx[i]].squeeze(-1).cpu().numpy()
+                mean_pred = pred_stack[i].mean(dim=0).squeeze(-1).cpu().numpy()
+                enc_error = np.abs(enc_pred - query_z)
+                best_error = np.abs(best_pred - query_z)
+                mean_error = np.abs(mean_pred - query_z)
+                error_vmax = max(enc_error.max(), best_error.max(), mean_error.max())
 
-                for ax, (surface, title) in zip(axes.flat, surfaces):
+                surfaces = [
+                    (enc_surface[i].cpu().numpy(), f"encoder r2={metric_enc[i].item():.3f}", enc_error),
+                    (best_surface[i].cpu().numpy(), f"best r2={metric_stack[i, best_idx[i]].item():.3f}", best_error),
+                    (mean_surface[i].cpu().numpy(), "diffusion mean", mean_error),
+                    (std_surface[i].cpu().numpy(), "sample std", None),
+                ]
+                if gt_surfaces[i] is not None:
+                    surfaces.insert(2, (gt_surfaces[i], "ground truth", None))
+
+                num_panels = len(surfaces)
+                if num_panels == 5:
+                    fig, axes = plt.subplots(2, 3, figsize=(18, 10), constrained_layout=True)
+                else:
+                    fig, axes = plt.subplots(2, 2, figsize=(14, 10), constrained_layout=True)
+
+                for ax, (surface, title, error) in zip(axes.flat, surfaces):
+                    if surface is None:
+                        ax.text(0.5, 0.5, "No ground truth", ha='center', va='center', transform=ax.transAxes)
+                        ax.set_title(title)
+                        continue
                     if title == "sample std":
                         img = ax.imshow(surface, origin="lower", extent=(-2.5, 2.5, -2.5, 2.5), cmap="viridis", vmin=0.0, vmax=std_vmax, aspect="equal")
                     else:
                         img = ax.imshow(surface, origin="lower", extent=(-2.5, 2.5, -2.5, 2.5), cmap="viridis", vmin=global_vmin, vmax=global_vmax, aspect="equal")
                     ax.contour(surface, levels=12, colors="k", linewidths=0.6, extent=(-2.5, 2.5, -2.5, 2.5), alpha=0.6)
                     ax.scatter(support_x, support_y, c=support_z, s=70, edgecolors="red", linewidth=1.2, cmap="RdYlBu", vmin=global_vmin, vmax=global_vmax)
-                    ax.scatter(query_x, query_y, c=query_z, s=30, alpha=0.7, marker="x", cmap="RdYlBu", vmin=global_vmin, vmax=global_vmax)
+                    if error is not None:
+                        ax.scatter(query_x, query_y, c=error, s=50, alpha=0.9, marker="x", cmap="hot", vmin=0, vmax=error_vmax, edgecolors="k")
+                    else:
+                        ax.scatter(query_x, query_y, c=query_z, s=30, alpha=0.7, marker="x", cmap="RdYlBu", vmin=global_vmin, vmax=global_vmax)
                     ax.set_title(title)
                     ax.set_xlabel("x₁")
                     ax.set_ylabel("x₂")
                     fig.colorbar(img, ax=ax, shrink=0.72)
 
-                fig.suptitle(f"{prefix} | family={batch.family_name[i]}")
+                mode = "Evaluation (generalization)" if prefix.startswith("eval") else "Training (in-distribution)"
+                fig.suptitle(f"{prefix} | {mode} | family={batch.family_name[i]}")
                 out = self.output_dir / "plots" / f"{prefix}_{i:02d}_{batch.family_name[i]}.png"
                 fig.savefig(out, dpi=140); plt.close(fig)
                 paths.append(str(out.relative_to(self.output_dir)))
+
+                # Control-specific reward-over-time plot
+                if self.config.task_type == "control":
+                    family = CONTROL_FAMILIES.get(batch.family_name[i])
+                    if family is not None:
+                        params = self.system.decode(latent[i : i + 1], context[i : i + 1])
+
+                        def policy_fn(state: torch.Tensor) -> torch.Tensor:
+                            with torch.no_grad():
+                                x_reshaped = state.view(1, 1, -1).to(self.device)
+                                u = functional_target_network(x_reshaped, params).squeeze().item()  # scalar action
+                                return torch.tensor([u], dtype=torch.float32)
+
+                        def zero_action_policy(state: torch.Tensor) -> torch.Tensor:
+                            return torch.zeros(1, dtype=torch.float32)
+
+                        initial_state = batch.support_x[i, 0]
+                        rollout_data = family.rollout(policy_fn, initial_state, num_steps=80, dt=0.05)
+                        baseline_rollout = family.rollout(zero_action_policy, initial_state, num_steps=80, dt=0.05)
+
+                        cum_diff = rollout_data['cum_rewards'][-1] - baseline_rollout['cum_rewards'][-1]
+
+                        fig_r, ax_r = plt.subplots(figsize=(6, 4), constrained_layout=True)
+                        ax_r.plot(rollout_data["rewards"], label="learned policy step reward", color="tab:blue")
+                        ax_r.plot(rollout_data["cum_rewards"], label="learned policy cumulative reward", color="tab:orange")
+                        ax_r.plot(baseline_rollout["rewards"], label="zero-action baseline step reward", color="tab:green", linestyle="--")
+                        ax_r.plot(baseline_rollout["cum_rewards"], label="zero-action baseline cumulative reward", color="tab:green", linestyle=":")
+                        ax_r.set_xlabel("time step")
+                        ax_r.set_ylabel("higher is better")
+                        ax_r.set_title(f"{prefix} reward curve (higher is better, cost-style) | family={batch.family_name[i]} | Δcum={cum_diff:.3f}")
+                        ax_r.legend()
+                        out_r = self.output_dir / "plots" / f"{prefix}_{i:02d}_{batch.family_name[i]}_reward.png"
+                        fig_r.savefig(out_r, dpi=140)
+                        plt.close(fig_r)
+                        paths.append(str(out_r.relative_to(self.output_dir)))
 
         return paths
 
@@ -639,6 +722,8 @@ class Experiment:
             groups = REGRESSION_TRAIN_GROUPS
         elif self.config.task_type == "bandit_regression":
             groups = BANDIT_TRAIN_GROUPS
+        elif self.config.task_type == "control":
+            groups = CONTROL_TRAIN_GROUPS
         else:
             groups = {}
         configured = set(self.config.families)
@@ -701,7 +786,7 @@ def export_latest_paper_results(summary):
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="Hyperdiffusion toy experiment")
     p.add_argument("--output-dir", type=str, default="runs/default")
-    p.add_argument("--task-type", type=str, choices=["classification", "regression", "bandit_regression"], default="classification")
+    p.add_argument("--task-type", type=str, choices=["classification", "regression", "bandit_regression", "control"], default="classification")
     p.add_argument("--families", type=str, nargs="+", default=None)
     p.add_argument("--expanded-train-families", action="store_true")
     p.add_argument("--eval-families", type=str, nargs="*", default=None)
@@ -753,6 +838,9 @@ def main() -> None:
     elif args.task_type == "bandit_regression":
         families = args.families or DEFAULT_BANDIT_TRAIN_FAMILIES
         eval_families = args.eval_families if args.eval_families is not None else DEFAULT_BANDIT_EVAL_FAMILIES
+    elif args.task_type == "control":
+        families = args.families or DEFAULT_CONTROL_TRAIN_FAMILIES
+        eval_families = args.eval_families if args.eval_families is not None else DEFAULT_CONTROL_EVAL_FAMILIES
     else:
         raise ValueError(f"Unknown task_type: {args.task_type}")
 

@@ -1,0 +1,267 @@
+{
+  "overall": {
+    "encoder_r2": 0.9961477580480278,
+    "diffusion_r2": 0.9808377253822982,
+    "selector_r2": 0.9808377253822982,
+    "encoder_loss": 0.021850890021869417,
+    "diffusion_loss": 0.1247465147863295,
+    "selector_loss": 0.0,
+    "diffusion_r2_mean_k": 0.9809039207641035,
+    "diffusion_r2_best_k": 0.9962770914193243,
+    "prediction_disagreement": 1.1656308320350945,
+    "weight_pairwise_l2": 2.243215884640813,
+    "latent_pairwise_l2": 4.822038142383098,
+    "uncertainty_error_correlation": 0.0,
+    "uncertainty_mean": 0.0,
+    "uncertainty_on_high_error_points": 0.0,
+    "uncertainty_on_low_error_points": 0.0
+  },
+  "macro_average": {
+    "encoder_r2": 0.9961477580480278,
+    "diffusion_r2": 0.9808377253822982,
+    "selector_r2": 0.9808377253822982,
+    "encoder_loss": 0.021850890021869417,
+    "diffusion_loss": 0.1247465147863295,
+    "selector_loss": 0.0,
+    "diffusion_r2_mean_k": 0.9809039207641035,
+    "diffusion_r2_best_k": 0.9962770914193243,
+    "prediction_disagreement": 1.1656308320350945,
+    "weight_pairwise_l2": 2.243215884640813,
+    "latent_pairwise_l2": 4.822038142383098,
+    "uncertainty_error_correlation": 0.0,
+    "uncertainty_mean": 0.0,
+    "uncertainty_on_high_error_points": 0.0,
+    "uncertainty_on_low_error_points": 0.0
+  },
+  "by_family": {
+    "nonlinear_control": {
+      "encoder_r2": 0.9961477580480278,
+      "diffusion_r2": 0.9808377253822982,
+      "selector_r2": 0.9808377253822982,
+      "encoder_loss": 0.021850890021869417,
+      "diffusion_loss": 0.1247465147863295,
+      "selector_loss": 0.0,
+      "diffusion_r2_mean_k": 0.9809039207641035,
+      "diffusion_r2_best_k": 0.9962770914193243,
+      "prediction_disagreement": 1.1656308320350945,
+      "weight_pairwise_l2": 2.243215884640813,
+      "latent_pairwise_l2": 4.822038142383098,
+      "uncertainty_error_correlation": 0.0,
+      "uncertainty_mean": 0.0,
+      "uncertainty_on_high_error_points": 0.0,
+      "uncertainty_on_low_error_points": 0.0
+    }
+  },
+  "diagnostics": {
+    "sample_count": 8,
+    "mismatch": {
+      "encoder_r2": 0.0,
+      "diffusion_r2": 0.0,
+      "num_mismatch_episodes": 0.0
+    },
+    "support_size_sweep": {
+      "2": {
+        "encoder_r2": 0.9556207883870229,
+        "diffusion_r2_mean": 0.9490051172906533
+      },
+      "4": {
+        "encoder_r2": 0.989513341570273,
+        "diffusion_r2_mean": 0.97433992754668
+      },
+      "8": {
+        "encoder_r2": 0.9960901046870276,
+        "diffusion_r2_mean": 0.9806176809361205
+      },
+      "16": {
+        "encoder_r2": 0.9971721555339172,
+        "diffusion_r2_mean": 0.9827695145504549
+      }
+    }
+  },
+  "baseline_comparison": {
+    "deterministic_encoder": {
+      "r2": 0.9961477580480278,
+      "loss": 0.021850890021869417
+    },
+    "diffusion_sampler": {
+      "r2": 0.9808377253822982,
+      "loss": 0.1247465147863295
+    },
+    "selector": {
+      "r2": 0.9808377253822982,
+      "loss": 0.0
+    }
+  },
+  "train_group_evals": {},
+  "artifacts": {
+    "plots_train": [
+      "plots/train_00_nonlinear_control.png",
+      "plots/train_00_nonlinear_control_reward.png",
+      "plots/train_01_nonlinear_control.png",
+      "plots/train_01_nonlinear_control_reward.png",
+      "plots/train_02_nonlinear_control.png",
+      "plots/train_02_nonlinear_control_reward.png",
+      "plots/train_03_nonlinear_control.png",
+      "plots/train_03_nonlinear_control_reward.png"
+    ],
+    "plots_eval": [
+      "plots/eval_00_nonlinear_control.png",
+      "plots/eval_00_nonlinear_control_reward.png",
+      "plots/eval_01_nonlinear_control.png",
+      "plots/eval_01_nonlinear_control_reward.png",
+      "plots/eval_02_nonlinear_control.png",
+      "plots/eval_02_nonlinear_control_reward.png",
+      "plots/eval_03_nonlinear_control.png",
+      "plots/eval_03_nonlinear_control_reward.png"
+    ]
+  },
+  "generalization": {
+    "eval_families": [
+      "nonlinear_control"
+    ],
+    "eval_summary": {
+      "overall": {
+        "encoder_r2": 0.9961774805095047,
+        "diffusion_r2": 0.9816126294899732,
+        "selector_r2": 0.9816126294899732,
+        "encoder_loss": 0.021713032933030264,
+        "diffusion_loss": 0.12631870427148897,
+        "selector_loss": 0.0,
+        "diffusion_r2_mean_k": 0.9814061935991049,
+        "diffusion_r2_best_k": 0.9962014110758901,
+        "prediction_disagreement": 1.1655934904702008,
+        "weight_pairwise_l2": 2.249991831090301,
+        "latent_pairwise_l2": 4.83619330022484,
+        "uncertainty_error_correlation": 0.0,
+        "uncertainty_mean": 0.0,
+        "uncertainty_on_high_error_points": 0.0,
+        "uncertainty_on_low_error_points": 0.0
+      },
+      "macro_average": {
+        "encoder_r2": 0.9961774805095047,
+        "diffusion_r2": 0.9816126294899732,
+        "selector_r2": 0.9816126294899732,
+        "encoder_loss": 0.021713032933030264,
+        "diffusion_loss": 0.12631870427148897,
+        "selector_loss": 0.0,
+        "diffusion_r2_mean_k": 0.9814061935991049,
+        "diffusion_r2_best_k": 0.9962014110758901,
+        "prediction_disagreement": 1.1655934904702008,
+        "weight_pairwise_l2": 2.249991831090301,
+        "latent_pairwise_l2": 4.83619330022484,
+        "uncertainty_error_correlation": 0.0,
+        "uncertainty_mean": 0.0,
+        "uncertainty_on_high_error_points": 0.0,
+        "uncertainty_on_low_error_points": 0.0
+      },
+      "by_family": {
+        "nonlinear_control": {
+          "encoder_r2": 0.9961774805095047,
+          "diffusion_r2": 0.9816126294899732,
+          "selector_r2": 0.9816126294899732,
+          "encoder_loss": 0.021713032933030264,
+          "diffusion_loss": 0.12631870427148897,
+          "selector_loss": 0.0,
+          "diffusion_r2_mean_k": 0.9814061935991049,
+          "diffusion_r2_best_k": 0.9962014110758901,
+          "prediction_disagreement": 1.1655934904702008,
+          "weight_pairwise_l2": 2.249991831090301,
+          "latent_pairwise_l2": 4.83619330022484,
+          "uncertainty_error_correlation": 0.0,
+          "uncertainty_mean": 0.0,
+          "uncertainty_on_high_error_points": 0.0,
+          "uncertainty_on_low_error_points": 0.0
+        }
+      },
+      "diagnostics": {
+        "sample_count": 8,
+        "mismatch": {
+          "encoder_r2": 0.0,
+          "diffusion_r2": 0.0,
+          "num_mismatch_episodes": 0.0
+        },
+        "support_size_sweep": {
+          "2": {
+            "encoder_r2": 0.9576155201066285,
+            "diffusion_r2_mean": 0.9482094926061109
+          },
+          "4": {
+            "encoder_r2": 0.9922825031680986,
+            "diffusion_r2_mean": 0.978752518654801
+          },
+          "8": {
+            "encoder_r2": 0.9958525509573519,
+            "diffusion_r2_mean": 0.9806755657773465
+          },
+          "16": {
+            "encoder_r2": 0.99717465066351,
+            "diffusion_r2_mean": 0.9830378139158711
+          }
+        }
+      },
+      "baseline_comparison": {
+        "deterministic_encoder": {
+          "r2": 0.9961774805095047,
+          "loss": 0.021713032933030264
+        },
+        "diffusion_sampler": {
+          "r2": 0.9816126294899732,
+          "loss": 0.12631870427148897
+        },
+        "selector": {
+          "r2": 0.9816126294899732,
+          "loss": 0.0
+        }
+      }
+    }
+  },
+  "runtime_seconds": 167.03185510635376,
+  "config": {
+    "task_type": "control",
+    "families": [
+      "nonlinear_control"
+    ],
+    "eval_families": [
+      "nonlinear_control"
+    ],
+    "train_steps_stage1": 1200,
+    "train_steps_stage2": 1200,
+    "eval_batches": 40,
+    "batch_size": 32,
+    "support_size": 8,
+    "query_size": 64,
+    "latent_dim": 32,
+    "cond_dim": 64,
+    "encoder_hidden": 128,
+    "decoder_hidden": 256,
+    "denoiser_hidden": 128,
+    "denoiser_depth": 4,
+    "target_hidden_dim": 64,
+    "target_depth": 4,
+    "learning_rate_stage1": 0.001,
+    "learning_rate_stage2": 0.0002,
+    "grad_clip": 1.0,
+    "latent_l2_weight": 0.0001,
+    "num_diffusion_steps": 20,
+    "diagnostic_samples": 8,
+    "mismatch_batches": 16,
+    "support_size_sweep": [
+      2,
+      4,
+      8,
+      16
+    ],
+    "visualization_count": 4,
+    "visualization_grid_size": 120,
+    "encoder_type": "attention",
+    "attention_heads": 4,
+    "attention_layers": 3,
+    "support_sweep_batches": 16,
+    "selector_enabled": false,
+    "selector_hidden": 128,
+    "selector_lr": 0.001,
+    "selector_num_samples": 8,
+    "device": "cpu",
+    "seed": 0
+  }
+}

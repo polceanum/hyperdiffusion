@@ -64,7 +64,25 @@ if sweep:
         out = root / "figures/plots/adaptation_curve.png"
         plt.savefig(out)
         plt.close()
-
+# Baseline comparison summary (diffusion vs encoder vs selector)
+baseline = data.get('baseline_comparison', {})
+if baseline:
+    plt.figure(figsize=(6, 4))
+    names = []
+    values = []
+    for key in ['deterministic_encoder', 'diffusion_sampler', 'selector']:
+        item = baseline.get(key)
+        if item is not None:
+            names.append(key.replace('_', ' ').title())
+            values.append(item.get('r2', item.get('loss', None)))
+    if values:
+        plt.bar(names, values, color=['tab:blue', 'tab:orange', 'tab:green'])
+        plt.title('Baseline Comparison (R2 or Loss)')
+        plt.ylabel('Value')
+        plt.tight_layout()
+        out = root / 'figures/plots/baseline_comparison.png'
+        plt.savefig(out)
+        plt.close()
 # Generate annex.tex with better captions
 annex_path = root / "sections" / "annex.tex"
 pngs = sorted((root / "figures" / "plots").glob("*.png"))
@@ -73,6 +91,7 @@ pngs = sorted((root / "figures" / "plots").glob("*.png"))
 caption_map = {
     "support_sweep.png": "Support Size Sweep: Performance vs. number of support examples",
     "adaptation_curve.png": "Adaptation Curve: Model performance across different support set sizes",
+    "baseline_comparison.png": "Baseline Comparison: encoder/diffusion/selector vs. contextual sampler",
     "uncertainty_summary.png": "Uncertainty Diagnostics: Summary of uncertainty metrics for current experiment",
 }
 
@@ -88,7 +107,7 @@ def get_caption(filename):
         family_name = family.replace('_', ' ').title()
         
         if plot_type == 'train':
-            return f"Training Example {int(idx)+1}: {family_name} task with support (orange) and query (gray) points"
+            return f"Training Example {int(idx)+1}: {family_name} task with support (orange) and query (gray) points where applicable; control reward-over-time plots are cost-based (higher/less negative is better)."
         elif plot_type == 'eval':
             return f"Evaluation Example {int(idx)+1}: {family_name} task generalization performance"
     
@@ -100,4 +119,4 @@ with open(annex_path, "w") as f:
     f.write("\\section{Annex: Diagnostic Plots}\n\n")
     for png in pngs:
         caption = get_caption(png.name)
-        f.write(f"\\begin{{figure}}[h]\n\\centering\n\\includegraphics[width=0.8\\linewidth]{{figures/plots/{png.name}}}\n\\caption{{{caption}}}\n\\end{{figure}}\n\n")
+        f.write(f"\\begin{{center}}\n\\includegraphics[width=0.8\\linewidth]{{figures/plots/{png.name}}}\n\\end{{center}}\n\\noindent\\textbf{{Caption:}} {caption}\n\n")

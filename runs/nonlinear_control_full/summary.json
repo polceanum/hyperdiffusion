@@ -1,0 +1,259 @@
+{
+  "overall": {
+    "encoder_r2": 0.9995214845985174,
+    "diffusion_r2": 0.9982221694663167,
+    "selector_r2": 0.9982221694663167,
+    "encoder_loss": 0.003440847601848418,
+    "diffusion_loss": 0.012061692451561612,
+    "selector_loss": 0.0,
+    "diffusion_r2_mean_k": 0.998197874519974,
+    "diffusion_r2_best_k": 0.9994818564970046,
+    "prediction_disagreement": 1.1506118586286902,
+    "weight_pairwise_l2": 1.3675156586803496,
+    "latent_pairwise_l2": 2.9958599801175296,
+    "uncertainty_error_correlation": 0.0,
+    "uncertainty_mean": 0.0,
+    "uncertainty_on_high_error_points": 0.0,
+    "uncertainty_on_low_error_points": 0.0
+  },
+  "macro_average": {
+    "encoder_r2": 0.9995214845985174,
+    "diffusion_r2": 0.9982221694663167,
+    "selector_r2": 0.9982221694663167,
+    "encoder_loss": 0.003440847601848418,
+    "diffusion_loss": 0.012061692451561612,
+    "selector_loss": 0.0,
+    "diffusion_r2_mean_k": 0.998197874519974,
+    "diffusion_r2_best_k": 0.9994818564970046,
+    "prediction_disagreement": 1.1506118586286902,
+    "weight_pairwise_l2": 1.3675156586803496,
+    "latent_pairwise_l2": 2.9958599801175296,
+    "uncertainty_error_correlation": 0.0,
+    "uncertainty_mean": 0.0,
+    "uncertainty_on_high_error_points": 0.0,
+    "uncertainty_on_low_error_points": 0.0
+  },
+  "by_family": {
+    "nonlinear_control": {
+      "encoder_r2": 0.9995214845985174,
+      "diffusion_r2": 0.9982221694663167,
+      "selector_r2": 0.9982221694663167,
+      "encoder_loss": 0.003440847601848418,
+      "diffusion_loss": 0.012061692451561612,
+      "selector_loss": 0.0,
+      "diffusion_r2_mean_k": 0.998197874519974,
+      "diffusion_r2_best_k": 0.9994818564970046,
+      "prediction_disagreement": 1.1506118586286902,
+      "weight_pairwise_l2": 1.3675156586803496,
+      "latent_pairwise_l2": 2.9958599801175296,
+      "uncertainty_error_correlation": 0.0,
+      "uncertainty_mean": 0.0,
+      "uncertainty_on_high_error_points": 0.0,
+      "uncertainty_on_low_error_points": 0.0
+    }
+  },
+  "diagnostics": {
+    "sample_count": 8,
+    "mismatch": {
+      "encoder_r2": 0.0,
+      "diffusion_r2": 0.0,
+      "num_mismatch_episodes": 0.0
+    },
+    "support_size_sweep": {
+      "2": {
+        "encoder_r2": 0.9710702182492241,
+        "diffusion_r2_mean": 0.9712765843141824
+      },
+      "4": {
+        "encoder_r2": 0.9977594232186675,
+        "diffusion_r2_mean": 0.9966777964727953
+      },
+      "8": {
+        "encoder_r2": 0.9994802441215143,
+        "diffusion_r2_mean": 0.9982166602276266
+      },
+      "16": {
+        "encoder_r2": 0.9995961089152843,
+        "diffusion_r2_mean": 0.99831858871039
+      }
+    }
+  },
+  "baseline_comparison": {
+    "deterministic_encoder": {
+      "r2": 0.9995214845985174,
+      "loss": 0.003440847601848418
+    },
+    "diffusion_sampler": {
+      "r2": 0.9982221694663167,
+      "loss": 0.012061692451561612
+    },
+    "selector": {
+      "r2": 0.9982221694663167,
+      "loss": 0.0
+    }
+  },
+  "train_group_evals": {},
+  "artifacts": {
+    "plots_train": [
+      "plots/train_00_nonlinear_control.png",
+      "plots/train_01_nonlinear_control.png",
+      "plots/train_02_nonlinear_control.png",
+      "plots/train_03_nonlinear_control.png"
+    ],
+    "plots_eval": [
+      "plots/eval_00_nonlinear_control.png",
+      "plots/eval_01_nonlinear_control.png",
+      "plots/eval_02_nonlinear_control.png",
+      "plots/eval_03_nonlinear_control.png"
+    ]
+  },
+  "generalization": {
+    "eval_families": [
+      "nonlinear_control"
+    ],
+    "eval_summary": {
+      "overall": {
+        "encoder_r2": 0.9995090165175498,
+        "diffusion_r2": 0.9982151810079813,
+        "selector_r2": 0.9982151810079813,
+        "encoder_loss": 0.0035124036978459116,
+        "diffusion_loss": 0.012118178770060694,
+        "selector_loss": 0.0,
+        "diffusion_r2_mean_k": 0.9982200162485242,
+        "diffusion_r2_best_k": 0.9994989270344377,
+        "prediction_disagreement": 1.1497740804683416,
+        "weight_pairwise_l2": 1.3692572676576673,
+        "latent_pairwise_l2": 2.988799421861768,
+        "uncertainty_error_correlation": 0.0,
+        "uncertainty_mean": 0.0,
+        "uncertainty_on_high_error_points": 0.0,
+        "uncertainty_on_low_error_points": 0.0
+      },
+      "macro_average": {
+        "encoder_r2": 0.9995090165175498,
+        "diffusion_r2": 0.9982151810079813,
+        "selector_r2": 0.9982151810079813,
+        "encoder_loss": 0.0035124036978459116,
+        "diffusion_loss": 0.012118178770060694,
+        "selector_loss": 0.0,
+        "diffusion_r2_mean_k": 0.9982200162485242,
+        "diffusion_r2_best_k": 0.9994989270344377,
+        "prediction_disagreement": 1.1497740804683416,
+        "weight_pairwise_l2": 1.3692572676576673,
+        "latent_pairwise_l2": 2.988799421861768,
+        "uncertainty_error_correlation": 0.0,
+        "uncertainty_mean": 0.0,
+        "uncertainty_on_high_error_points": 0.0,
+        "uncertainty_on_low_error_points": 0.0
+      },
+      "by_family": {
+        "nonlinear_control": {
+          "encoder_r2": 0.9995090165175498,
+          "diffusion_r2": 0.9982151810079813,
+          "selector_r2": 0.9982151810079813,
+          "encoder_loss": 0.0035124036978459116,
+          "diffusion_loss": 0.012118178770060694,
+          "selector_loss": 0.0,
+          "diffusion_r2_mean_k": 0.9982200162485242,
+          "diffusion_r2_best_k": 0.9994989270344377,
+          "prediction_disagreement": 1.1497740804683416,
+          "weight_pairwise_l2": 1.3692572676576673,
+          "latent_pairwise_l2": 2.988799421861768,
+          "uncertainty_error_correlation": 0.0,
+          "uncertainty_mean": 0.0,
+          "uncertainty_on_high_error_points": 0.0,
+          "uncertainty_on_low_error_points": 0.0
+        }
+      },
+      "diagnostics": {
+        "sample_count": 8,
+        "mismatch": {
+          "encoder_r2": 0.0,
+          "diffusion_r2": 0.0,
+          "num_mismatch_episodes": 0.0
+        },
+        "support_size_sweep": {
+          "2": {
+            "encoder_r2": 0.9690789646701887,
+            "diffusion_r2_mean": 0.9690900200803299
+          },
+          "4": {
+            "encoder_r2": 0.9982240799581632,
+            "diffusion_r2_mean": 0.9970141964731738
+          },
+          "8": {
+            "encoder_r2": 0.9995368868112564,
+            "diffusion_r2_mean": 0.9982946129748598
+          },
+          "16": {
+            "encoder_r2": 0.9996454830979928,
+            "diffusion_r2_mean": 0.9983426667749882
+          }
+        }
+      },
+      "baseline_comparison": {
+        "deterministic_encoder": {
+          "r2": 0.9995090165175498,
+          "loss": 0.0035124036978459116
+        },
+        "diffusion_sampler": {
+          "r2": 0.9982151810079813,
+          "loss": 0.012118178770060694
+        },
+        "selector": {
+          "r2": 0.9982151810079813,
+          "loss": 0.0
+        }
+      }
+    }
+  },
+  "runtime_seconds": 476.6729199886322,
+  "config": {
+    "task_type": "control",
+    "families": [
+      "nonlinear_control"
+    ],
+    "eval_families": [
+      "nonlinear_control"
+    ],
+    "train_steps_stage1": 5000,
+    "train_steps_stage2": 5000,
+    "eval_batches": 40,
+    "batch_size": 32,
+    "support_size": 8,
+    "query_size": 64,
+    "latent_dim": 32,
+    "cond_dim": 64,
+    "encoder_hidden": 128,
+    "decoder_hidden": 256,
+    "denoiser_hidden": 128,
+    "denoiser_depth": 4,
+    "target_hidden_dim": 64,
+    "target_depth": 4,
+    "learning_rate_stage1": 0.001,
+    "learning_rate_stage2": 0.0002,
+    "grad_clip": 1.0,
+    "latent_l2_weight": 0.0001,
+    "num_diffusion_steps": 20,
+    "diagnostic_samples": 8,
+    "mismatch_batches": 16,
+    "support_size_sweep": [
+      2,
+      4,
+      8,
+      16
+    ],
+    "visualization_count": 4,
+    "visualization_grid_size": 120,
+    "encoder_type": "attention",
+    "attention_heads": 4,
+    "attention_layers": 3,
+    "support_sweep_batches": 16,
+    "selector_enabled": false,
+    "selector_hidden": 128,
+    "selector_lr": 0.001,
+    "selector_num_samples": 8,
+    "device": "cpu",
+    "seed": 0
+  }
+}
