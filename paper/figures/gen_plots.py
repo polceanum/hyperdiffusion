@@ -7,7 +7,22 @@ root = Path(__file__).resolve().parents[1]
 runs = root.parent / "runs"
 plots_dir = root / "figures" / "plots"
 plots_dir.mkdir(parents=True, exist_ok=True)
-data = json.loads((root / "results/latest.json").read_text())
+
+
+def load_json(path: Path):
+    if path.exists():
+        return json.loads(path.read_text())
+    return None
+
+
+classification_data = load_json(runs / "classification_v2" / "summary.json")
+regression_data = load_json(runs / "regression_v2" / "summary.json")
+bandit_data = load_json(runs / "bandit_v2" / "summary.json")
+control_data = load_json(runs / "control_v2" / "summary.json")
+
+# Use control for support/adaptation plots and regression for uncertainty diagnostics.
+support_plot_data = control_data or regression_data or bandit_data or classification_data or {}
+uncertainty_plot_data = regression_data or bandit_data or control_data or classification_data or {}
 
 
 # ──────────────────────────────────────────────────────────
@@ -40,7 +55,7 @@ if any(v is not None for v in enc_vals):
     ax.set_xticks(x)
     ax.set_xticklabels(TASK_LABELS, fontsize=8)
     ax.set_ylabel("Performance", fontsize=8)
-    ax.set_title("Per-Task Benchmark (OOD Eval Families)", fontsize=9)
+    ax.set_title("Per-Task Benchmark", fontsize=9)
     ax.legend(fontsize=7, loc="lower right")
     ax.tick_params(labelsize=7)
     ax.set_ylim(bottom=min(0, min(v for v in base_vals if v is not None) - 0.1))
@@ -156,7 +171,7 @@ elif matrix_rows:
     plt.close(fig)
     print("[gen_plots] wrote encoding_mode_ablation.png")
 
-sweep = data.get("diagnostics", {}).get("support_size_sweep", {})
+sweep = support_plot_data.get("diagnostics", {}).get("support_size_sweep", {})
 
 plt.figure(figsize=(3.5, 2.5))
 if sweep:
@@ -181,7 +196,7 @@ plt.savefig(out, dpi=90, bbox_inches='tight')
 plt.close()
 
 # Uncertainty summary plot (regression / bandit)
-unc = data.get("overall", {})
+unc = uncertainty_plot_data.get("overall", {})
 if any(key in unc for key in ["uncertainty_mean", "uncertainty_error_correlation"]):
     plt.figure(figsize=(3.5, 2.5))
     metrics = [
@@ -218,7 +233,7 @@ if sweep:
         plt.savefig(out, dpi=90, bbox_inches='tight')
         plt.close()
 # Baseline comparison summary (diffusion vs encoder vs selector vs static baseline)
-baseline = data.get('baseline_comparison', {})
+baseline = support_plot_data.get('baseline_comparison', {})
 if baseline:
     plt.figure(figsize=(3.5, 2.5))
     names = []

@@ -1,4 +1,4 @@
-"""Generate LaTeX tables for the HyperDiffusion paper."""
+"""Generate LaTeX tables for the paper."""
 import json
 from pathlib import Path
 
@@ -55,10 +55,13 @@ def gen_task_benchmark_table():
     body_lines = []
     for task, display, metric in TASK_DISPLAY:
         enc, diff, base = load_task_row(task)
-        gap = (enc - base) if (enc is not None and base is not None) else None
+        gap = None
+        if enc is not None and base is not None and base != 0:
+            gap = ((enc - base) / abs(base)) * 100
+        gap_str = "--" if gap is None else f"{gap:+.1f}\\%"
         line = (
             f"  {display} & {metric} & {fmt(enc)} & {fmt(diff)} & "
-            f"{fmt(base)} & {fmt(gap)} \\\\"
+            f"{fmt(base)} & {gap_str} \\\\" 
         )
         body_lines.append(line)
     body = "\n".join(body_lines)
@@ -68,16 +71,15 @@ def gen_task_benchmark_table():
         "\\centering",
         "\\begin{tabular}{llccccc}",
         "\\toprule",
-        "Task & Metric & Encoder & Diffusion & Baseline & Enc$-$Base \\\\",
+        "Task & Metric & Encoder & Diffusion & Baseline & Enc Gain \\\\ ",
         "\\midrule",
         body,
         "\\bottomrule",
         "\\end{tabular}",
-        "\\caption{Per-task benchmark on OOD held-out eval families. "
-        "\\emph{Encoder}: attention meta-learner reading support demonstrations. "
-        "\\emph{Diffusion}: DDIM-sampled hypernetwork (main model). "
-        "\\emph{Baseline}: static MLP with no support access. "
-        "1000 training steps per stage.}",
+        "\\caption{Per-task benchmark from run-level \\texttt{overall} summaries (v2 results, 1000 training steps per stage). "
+        "\\emph{Encoder}: hypernetwork with attention-based support encoding. "
+        "\\emph{Diffusion}: optional DDIM-sampled latent add-on. "
+        "\\emph{Baseline}: static MLP with no per-task adaptation. Enc Gain shows relative improvement of Encoder over Baseline.}",
         "\\label{tab:task_benchmark}",
         "\\end{table}",
         "",

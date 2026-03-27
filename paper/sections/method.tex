@@ -1,7 +1,67 @@
-\section{Method}
+\section{Method}\label{sec:method}
 
-Given a support set $S$, we encode it into a latent vector $z = f(S)$.
+\subsection{Problem Setting}
 
-A hypernetwork maps $z$ to weights $w = g(z)$ of a target model.
+We are given a distribution $p(\mathcal{T})$ over tasks.
+Each task $\tau \sim p(\mathcal{T})$ defines a joint data distribution $p_\tau(x, y)$.
+A \emph{support set} $S = \{(x_i, y_i)\}_{i=1}^N$ of $N$ i.i.d.\ draws is provided at meta-test time.
+The goal is to produce the parameters $w$ of a small \emph{target network} $h_w : \mathcal{X} \rightarrow \mathcal{Y}$ that generalises from $S$ to held-out query points $(x, y) \sim p_\tau$.
+We additionally wish to capture uncertainty over $w$, yielding a distribution $p(w \mid S)$.
 
-A diffusion model is trained over latent codes to model a distribution over plausible solver representations.
+\subsection{Architecture}
+
+The main system used in our study has two core components: an encoder $f$ and a hypernetwork decoder $g$. We also evaluate an optional diffusion denoiser $d$ as an add-on for stochastic latent sampling.
+
+\paragraph{Attention set encoder.}
+The encoder maps a variable-length support set $S$ to a pair $(c, z)$ where $c \in \mathbb{R}^{d_c}$ is a \emph{context} vector and $z \in \mathbb{R}^{d_z}$ is a \emph{latent code}.
+Each support pair $(x_i, y_i)$ is projected by a 2-layer MLP to a 128-dimensional token.
+Three Transformer-encoder layers (4 attention heads, hidden dimension 128, GELU activations, LayerNorm) process the token sequence.
+An attention-pooling layer with a learned query vector aggregates the sequence into a single vector, which is then projected to $c \in \mathbb{R}^{64}$ and $z \in \mathbb{R}^{32}$ by separate MLPs.
+
+\paragraph{Hypernetwork decoder.}
+A three-layer MLP with hidden dimension 256 and SiLU activations maps the concatenation $[z; c] \in \mathbb{R}^{96}$ to a flat parameter vector, which is reshaped to the weight tensors of the target network.
+The target network is a 4-layer ReLU MLP with 64 hidden units (input dimension 2, output dimension 1, approximately 13K parameters).
+
+\paragraph{Optional FiLM-conditioned diffusion denoiser.}
+The denoiser $d(z_t, t, c)$ predicts the noise $\epsilon$ added to a noisy latent $z_t$.
+It uses a sinusoidal time embedding (dimension 64) concatenated with $c$ and projected to 128 dimensions.
+Four residual FiLM blocks (scale and shift computed from the conditioning vector via a linear layer) refine the latent estimate.
+We use a linear variance schedule with $T=20$ diffusion timesteps ($\beta_{\min} = 10^{-4}$, $\beta_{\max} = 2 \times 10^{-2}$) and deterministic DDIM sampling at inference.
+
+\paragraph{Text encoder.}
+For text-conditioned encoding, task descriptions are processed by DistilBERT (pre-trained, frozen) to produce a 768-dimensional CLS token embedding.
+A two-layer MLP projects this to $[c; z] \in \mathbb{R}^{96}$, matching the support encoder output space.
+For hybrid mode, the context-latent pairs from support and text branches are mixed as $\alpha \cdot [c_{\text{sup}}; z_{\text{sup}}] + (1-\alpha) \cdot [c_{\text{txt}}; z_{\text{txt}}]$ with $\alpha = 0.5$.
+\paragraph{Oracle: task identification baseline.}
+For the oracle modality, we provide a one-hot encoded family index directly as input.
+If task $\tau$ belongs to family $j \in \{1, \ldots, F\}$, the oracle input is a one-hot vector $\mathbf{e}_j$.
+A two-layer MLP projects this $F$-dimensional input to $[c; z] \in \mathbb{R}^{96}$.
+Oracle represents perfect task identification with zero structural information: the model knows exactly which family the task belongs to, but knows nothing about the task's input-output relationships, dynamics, or semantic intent.
+This modality serves as a diagnostic test: if oracle performs well, it would suggest task labels alone suffice for decoder generalization; if oracle fails, it would indicate that structural task information is necessary.
+\subsection{Training}
+
+Training proceeds in two sequential stages.
+
+\paragraph{Stage 1: encoder and hypernetwork.}
+We jointly optimize the encoder, hypernetwork decoder, text projector, and target network.
+For each episode, a batch of $B{=}32$ tasks is sampled; each task provides $N{=}16$ support points.
+The encoder (or text/oracle branch) produces $(c, z)$; the decoder maps $(z, c)$ to target weights $w$; the target network evaluates on held-out query points.
+The loss is task-prediction MSE (regression/control) or cross-entropy (classification).
+This stage trains the decoder to extract task structure from the encoded representation and predict unseen query points---capturing how the decoder converts task information into task-specific weights.
+Optimiser: AdamW with learning rate $10^{-3}$, 1000 training steps.
+
+\paragraph{Stage 2: optional diffusion denoiser.}
+The encoder is frozen.
+For each step we sample a fresh batch of tasks, encode to $z$, sample a random timestep $t \sim \text{Uniform}(0, T-1)$, apply the forward diffusion $z_t = \sqrt{\bar{\alpha}_t}\, z + \sqrt{1-\bar{\alpha}_t}\, \epsilon$ with $\epsilon \sim \mathcal{N}(0, I)$, and train the denoiser to predict $\epsilon$ via MSE.
+Optimiser: AdamW with learning rate $2 \times 10^{-4}$, 1000 training steps.
+
+\subsection{Inference and Evaluation}
+
+At meta-test time, given support set $S$, we:
+\begin{enumerate}
+  \item Run the encoder (or text/hybrid branch) to obtain context $c$.
+  \item Use the deterministic encoder latent $z$ directly for the main model, or optionally sample $K$ latent codes $\hat{z}^{(1)}, \ldots, \hat{z}^{(K)}$ via DDIM with $c$ as condition.
+  \item Decode each latent code to target weights.
+  \item Evaluate the resulting target networks; when diffusion sampling is used, we report both single-sample and best-of-$k$ summaries where relevant.
+\end{enumerate}
+The deterministic encoder path is the primary model in the paper; the diffusion path is included as an exploratory extension.

@@ -1,3 +1,127 @@
-\section{Discussion}
+\section{Discussion}\label{sec:discussion}
 
-Deterministic encoders provide strong baselines. Diffusion improves diversity and best-of-k performance. Gains are more apparent in regression than classification.
+\subsection{Summary of Findings}
+
+Our investigation highlights several consistent patterns across task domains and encoding modalities:
+
+\paragraph{Strong domain-dependent effects.}
+The four domains separate into a consistent difficulty hierarchy: control near ceiling,
+classification strong, regression moderate, and bandit hardest.
+This pattern is stable across encoder and diffusion variants and indicates that task
+geometry---not just model capacity---is the main determinant of OOD generalization quality.
+
+\paragraph{Diffusion sampling adds limited incremental gain.}
+Across domains, the diffusion add-on closely tracks deterministic encoder performance, with only
+small metric differences in the main benchmark. This suggests the latent posterior is
+already concentrated; under current training, sampling contributes little average-metric lift.
+
+\paragraph{Direct baseline comparison reveals meta-learning value.}
+The static MLP baseline provides a strong sanity check on meta-learning necessity.
+On regression the baseline achieves negative $R^2$ ($-1.7877$), failing to provide useful predictive structure; the encoder's advantage is clear.
+On control the baseline achieves $R^2 = 0.7891$, capturing shared qualitative structure (stabilization via negative feedback) but missing task-specific geometry.
+The encoder's $+26.3\%$ improvement reflects genuine task adaptation beyond family-level prototyping.
+
+\paragraph{Oracle collapse: what structural information decoders need.}
+One of the most diagnostic findings is oracle mode's poor performance: providing perfect task identification (one-hot family index) yields only $6.6\%\pm6.3\%$ win-rate---close to random in this setting.
+
+This does not mean ``perfect encoding but failed decoding.''
+Rather, it means task identity is categorically different from task structure.
+Oracle carries categorical information (``this is family X''); support and text carry structural information (``this task has these dynamics, these input-output relationships, this semantic intent'').
+In our setting, the decoder does not reliably convert categorical labels into useful weights because labels carry little structural signal---no input-output examples, no dynamics, no features.
+
+\paragraph{What encodings provide that oracle does not.}
+Support demonstrations: observed input-output pairs, implicit task dynamics, sample diversity.
+Text descriptions: semantic task intent, relevant variables, control objectives.
+Hybrid: both structural sources.
+Oracle: family identity only.
+
+The oracle result suggests that \emph{general-purpose fast weight generation benefits from structural task information}, not just labels.
+Demonstration and text modes survive (hybrid $25.7\%$ vs oracle $6.6\%$) because they provide structural features the decoder can exploit.
+
+\paragraph{Encoding modality shapes decoder utilization.}
+Despite oracle collapse, encoding modality profoundly affects performance.
+Hybrid achieves best reward ($25.7\%\pm10.8\%$) despite lower reconstruction ($R^2 = 0.962 \pm 0.014$) than support ($0.969$).
+Encoding modality shapes which structural signals the decoder prioritizes: demonstrations enable input-output mapping; language enables task semantics.
+Yet the reconstruction--reward gap persists across all modalities, indicating an important limitation of the current decoder setup.
+No single modality closes the gap.
+In the current results, diffusion does not address the structural gap and is best viewed as an auxiliary extension rather than a core ingredient.
+
+\subsection{Limitations}
+
+\paragraph{Training scale.}
+All experiments use only 1000 gradient steps per stage with batch size 32.
+At this scale the encoder and diffusion model are likely under-trained; Figure~\ref{fig:support_sweep} suggests performance is still improving at $N = 32$ support points, and training curves show no clear convergence.
+Results at 1000 steps should be interpreted as a lower bound on the system's capability.
+
+\paragraph{Task complexity.}
+Current tasks are synthetic 2D toy problems.
+Target networks are small (13K parameters, 2-dimensional input), latent codes are 32-dimensional, and dynamics are low-dimensional continuous systems.
+Transferring findings to higher-dimensional tasks (e.g.\ image-based tasks, high-DoF robotics) requires significant architectural scaling.
+
+\paragraph{Reward evaluation protocol.}
+The reward win-rate metric is sensitive to the strength of the static baseline comparator.
+In our protocol, the static baseline is a well-tuned task-agnostic MLP; a weaker comparator would inflate win-rates for all modes.
+Reported win-rates below 50\% do not necessarily mean meta-learned policies are \emph{poor}---they may still achieve strong absolute reward while the comparator is unusually strong.
+
+\paragraph{Statistical power.}
+Encoding-mode ablations use only 3 seeds.
+Standard deviations are substantial (e.g.\ text win-rate $\pm19.9\%$), and confidence intervals for differences between modes overlap, making definitive ranking statistically fragile.
+
+\paragraph{Text encoder quality.}
+DistilBERT is a general-purpose language model pre-trained on Wikipedia and BooksCorpus, not on task description corpora.
+TaskDescription strings in our setup are concise single-sentence explanations; a fine-tuned or instruction-following LLM may extract substantially richer task structure.
+
+\subsection{Proposed Future Experiments}
+
+We identify the following experiments as most likely to yield significant improvements and clearer conclusions.
+
+\paragraph{1. Long-run training (priority: high).}
+Scaling to 10K--50K training steps per stage for all task types with periodic evaluation checkpoints would reveal whether the reconstruction--reward gap shrinks with training.
+Our 1000-step runs are likely well below the performance ceiling for this architecture.
+A full convergence study (loss curve to plateau, with held-out set evaluation every 500 steps) would establish a meaningful performance upper bound.
+
+\paragraph{2. Reward-aware best-of-$k$ selection (priority: high).}
+Currently reward audit uses a single sampled policy.
+Sampling $K = 8$ or $K = 32$ policies from the diffusion model and selecting the best-reward policy (measured by a fast value estimate or a short rollout) would test whether diffusion diversity directly improves reward.
+This is the most direct intervention to close the reconstruction--reward gap, since it leverages sample diversity without changing the model.
+
+\paragraph{3. Diffusion guidance for reward maximisation (priority: high).}
+Classifier-free guidance~\cite{ho2021cfg} or reward-conditioned DDIM could direct the diffusion sampler toward high-reward regions of the latent space.
+Adding a small reward-predictor head trained on (context, latent) pairs would enable gradient-guided latent search during inference, turning the diffusion model into a policy optimiser.
+
+\paragraph{4. More seeds and power analysis (priority: medium).}
+Increasing from 3 to 10 seeds and running a formal two-sided $t$-test (or bootstrap confidence intervals) for mode comparisons would sharpen statistical conclusions.
+At 3 seeds, the standard error on text-mode win-rate is $\pm11.5\%$, making differences non-significant.
+A sample-size calculation from the observed effect sizes suggests $\geq$8 seeds are needed for 80\% power at $\alpha = 0.05$.
+
+\paragraph{5. Latent dimension and architecture sweep (priority: medium).}
+The current $d_z = 32$ latent dimension may be too compressed for high-diversity tasks.
+Sweeping $d_z \in \{16, 32, 64, 128\}$ together with the diffusion denoiser width would characterise the expressivity--trainability frontier.
+Larger latents may capture richer task families at the cost of harder diffusion training.
+
+\paragraph{6. Harder OOD generalisation (priority: medium).}
+Current OOD families are mild variants of training dynamics.
+Designing \emph{structurally distinct} OOD tasks (e.g.\ chaos-inducing parameters, qualitatively different attractors, partial observability) would more rigorously probe the system's generalisation capacity rather than interpolation near training distribution boundaries.
+
+\paragraph{7. Online / iterative adaptation (priority: medium).}
+A natural extension is to use initial rollout rewards to update the diffusion prior in a few additional gradient steps---similar in spirit to context-conditioned meta-RL.
+Starting from the diffusion posterior and running a handful of reinforce-style updates on the latent code would combine the fast-weight advantage with online fine-tuning, without full model retraining.
+
+\paragraph{8. Stronger text conditioning (priority: medium--low).}
+Replacing DistilBERT with a larger instruction-following model (e.g.\ Llama-3 8B or GPT-4 via API) and writing richer task descriptions would likely improve text-mode reward transfer.
+The current descriptions are one-sentence summaries; LLMs respond better to structured prompts that include state/action semantics, reward shaping details, and expected challenge.
+
+\paragraph{9. Proper meta-learning baselines (priority: medium--low).}
+Comparing against MAML, Prototypical Networks adapted to the weight-generation setting, and PEARL on the control task would contextualise whether the gains from hypernetwork generation are meaningful relative to well-tuned gradient-based meta-learners.
+Currently the \emph{only} baseline is a task-agnostic MLP, which represents an ideally weak comparator.
+
+\paragraph{10. Real-world control environments (priority: low--future).}
+Transferring to standard continuous control benchmarks (MuJoCo HalfCheetah, Ant, Hopper with randomised dynamics) would establish whether the toy control findings hold at scale.
+This requires scaling the target network architecture, the hypernetwork, and the support set collection procedure, but the conceptual framework is directly applicable.
+
+\subsection{Conclusion}
+
+The main result of this paper is not the proposal of a new framework, but the empirical finding that decoder performance depends strongly on the structure of the task encoding it receives.
+Using a common encoder--hypernetwork testbed, we find that the deterministic encoder provides a strong reconstruction baseline, diffusion sampling adds little average-metric gain, and encoding modality matters more than categorical task identity.
+In particular, hybrid support-plus-language encoding gives the best reward transfer in our control ablation, while oracle family identity collapses despite respectable reconstruction.
+We also identify a systematic reconstruction--reward gap and provide a prioritised roadmap of experiments for understanding and potentially closing it.

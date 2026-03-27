@@ -1,5 +1,42 @@
 \section{Introduction}
 
-We study how to generate task-specific neural network weights from small support sets. Hypernetworks can map task representations to weights, but are typically deterministic. Many tasks admit multiple plausible solutions, especially under limited data.
+A central challenge in machine learning is adapting quickly to new tasks from limited evidence.
+Meta-learning approaches address this by learning across a distribution of tasks so that inference on a novel task requires only a small support set.
+One natural instantiation is to learn a mapping from support sets to neural network weights---so-called \emph{fast weights} or \emph{hypernetworks}---which can directly produce a task-specific solver in a single forward pass without any gradient update at test time.
 
-We explore whether diffusion models can represent a distribution over solver latents conditioned on a support set.
+\paragraph{A note on stochastic weight generation.}
+Deterministic hypernetworks produce a single weight vector for each support set, while stochastic extensions can in principle represent multiple compatible solutions.
+In this paper we treat diffusion-based sampling as an auxiliary extension rather than the main contribution, since the central question is which task encodings the decoder can use effectively.
+
+\paragraph{The role of encoding modality and structural information.}
+Beyond support set demonstrations, a task can be described via multiple information channels.
+Practitioners combine sensor data with verbal instructions; LLM agents receive observations and language specifications; humans engage with demonstrations and natural-language task descriptions.
+The critical question is: what \emph{structural properties} of task encoding enable decoder generalization?
+We study four complementary modalities with distinct information profiles:
+(i)~\emph{support encoding}: task demonstrations (rich input-output relationships, task-specific structure),
+(ii)~\emph{text encoding}: natural-language descriptions via DistilBERT (semantic task intent, relevant variables),
+(iii)~\emph{hybrid}: convex mixture of support and text (complementary structural signals),
+(iv)~\emph{oracle}: perfect task identification via one-hot family index (maximum categorical information, zero structural features).
+The oracle mode is theoretically revealing: it provides perfect answers to ``which family is this task?'' but zero information about ``what makes this task behave this way?''
+Comparing these modes illuminates what structural properties decoders actually use for generalization.
+
+\paragraph{This work.}
+Our main goal is to study which forms of task information actually support decoder generalization.
+To do so, we use an encoder--hypernetwork system as a concrete experimental vehicle that lets us compare support, text, hybrid, and oracle conditioning under a common decoder.
+We additionally evaluate a diffusion-based latent sampler as an optional extension, but it is not the main object of study.
+
+We evaluate systematically across classification, regression, bandit optimisation, and control tasks, and use the resulting comparisons to isolate which encoding modalities provide information the decoder can actually exploit.
+Our contributions are:
+\begin{enumerate}
+  \item A diagnostic empirical study of what structural properties of task encoding enable decoder generalization across heterogeneous task domains.
+  \item Systematic comparison of four encoding modalities (support, text, hybrid, oracle) revealing distinct trade-offs: support achieves high reconstruction, hybrid achieves the strongest reward, and oracle performs poorly.
+  \item Empirical identification of the \emph{reconstruction--reward gap}: high parameter-space $R^2$ does not guarantee deployed reward. This gap suggests decoders learn to fit parameter space without capturing task structure relevant for generalization.
+  \item The oracle collapse result: perfect task identification (one-hot family index) achieves only $6.6\%\pm6.3\%$ win-rate, suggesting that task labels are insufficient on their own. In our setting, decoders benefit from structural task information (demonstrations or language descriptions) rather than categorical identity alone.
+  \item An auxiliary negative result for diffusion-based sampling: in the current setup it usually tracks the deterministic encoder closely and adds little average-metric benefit.
+\end{enumerate}
+
+The remainder of the paper is organised as follows.
+Section~\ref{sec:related} reviews related work.
+Section~\ref{sec:method} describes the experimental architecture and training procedure.
+Section~\ref{sec:experiments} presents quantitative and qualitative results.
+Section~\ref{sec:discussion} discusses findings, limitations, and proposed future experiments.

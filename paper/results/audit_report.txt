@@ -1,0 +1,26 @@
+RESULT ARTIFACT AUDIT
+========================================================================
+
+Classification
+  source: runs/classification_v2/summary.json
+  split config: train=8 eval=0
+  main metrics: encoder=0.8207 diffusion=0.8212 baseline=0.6682
+  ood metrics: not present in this summary
+
+Regression
+  source: runs/regression_v2/summary.json
+  split config: train=6 eval=4
+  main metrics: encoder=0.5975 diffusion=0.5795 baseline=-1.7841
+  ood metrics:  encoder=-0.7753 diffusion=-0.6239 baseline=-5.8339
+
+Bandit
+  source: runs/bandit_v2/summary.json
+  split config: train=4 eval=2
+  main metrics: encoder=0.1196 diffusion=0.1221 baseline=-2.3018
+  ood metrics:  encoder=-0.0510 diffusion=-0.0322 baseline=-0.5690
+
+Control
+  source: runs/control_v2/summary.json
+  split config: train=8 eval=4
+  main metrics: encoder=0.9966 diffusion=0.9839 baseline=0.8003
+  ood metrics:  encoder=0.9641 diffusion=0.9474 baseline=0.7840
