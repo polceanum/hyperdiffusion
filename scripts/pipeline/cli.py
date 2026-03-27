@@ -5,6 +5,7 @@ import argparse
 from pathlib import Path
 
 from .config import PipelineConfig
+from .validate import validate_experiment_outputs, validate_paper_artifacts, write_provenance_manifest
 from .workflows import (
     build_paper,
     clean_paper_artifacts,
@@ -20,7 +21,10 @@ def _project_root() -> Path:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Unified modular pipeline for HyperDiffusion")
-    parser.add_argument("command", choices=["full-refresh", "benchmark", "refresh-artifacts", "build-paper", "clean-paper"])
+    parser.add_argument(
+        "command",
+        choices=["full-refresh", "benchmark", "refresh-artifacts", "build-paper", "clean-paper", "validate"],
+    )
     parser.add_argument("--python", dest="python_exec", default=None, help="Python executable to use")
     parser.add_argument("--train-steps-stage1", type=int, default=1000)
     parser.add_argument("--train-steps-stage2", type=int, default=1000)
@@ -28,7 +32,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--support-sweep-batches", type=int, default=8)
     parser.add_argument("--diagnostic-samples", type=int, default=4)
-    parser.add_argument("--visualization-count", type=int, default=0)
+    parser.add_argument("--visualization-count", type=int, default=4)
     parser.add_argument("--reward-audit-batches", type=int, default=6)
     parser.add_argument("--reward-audit-batch-size", type=int, default=16)
     parser.add_argument("--seeds", type=int, nargs="+", default=[0, 1, 2])
@@ -67,6 +71,11 @@ def main() -> None:
         build_paper(cfg)
     elif args.command == "clean-paper":
         clean_paper_artifacts(cfg)
+    elif args.command == "validate":
+        exp_validation = validate_experiment_outputs(cfg)
+        write_provenance_manifest(cfg, stage="validate-experiments", validation=exp_validation)
+        paper_validation = validate_paper_artifacts(cfg)
+        write_provenance_manifest(cfg, stage="validate-paper-artifacts", validation=paper_validation)
 
 
 if __name__ == "__main__":

@@ -525,7 +525,11 @@ def generate_annex():
         "uncertainty_summary.png",
         "baseline_comparison.png",
     ]
-    pngs = [root / "figures" / "plots" / name for name in preferred_order if (root / "figures" / "plots" / name).exists()]
+    all_pngs = sorted((root / "figures" / "plots").glob("*.png"))
+    preferred = [root / "figures" / "plots" / name for name in preferred_order if (root / "figures" / "plots" / name).exists()]
+    preferred_set = {p.name for p in preferred}
+    extras = [p for p in all_pngs if p.name not in preferred_set]
+    pngs = preferred + extras
 
     caption_map = {
         "support_sweep.png": "Support Size Sweep: Performance vs. number of support examples",
@@ -570,7 +574,7 @@ def generate_annex():
             f.write("\\end{center}\n")
             f.write(f"\\noindent\\textbf{{Caption:}} {caption}\n\n")
 
-    print(f"[gen_plots] wrote annex.tex ({len(pngs)} curated figures)")
+    print(f"[gen_plots] wrote annex.tex ({len(pngs)} figures)")
 
 
 if __name__ == "__main__":

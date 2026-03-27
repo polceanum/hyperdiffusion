@@ -35,9 +35,14 @@ python -m hyperdiffusion.experiment --task-type bandit_regression --output-dir r
 Preferred modular entrypoints:
 
 1. `python -m scripts.pipeline.cli clean-paper` to clear paper artifacts
-2. `python -m scripts.pipeline.cli refresh-artifacts` to regenerate tables/plots/reports
-3. `python -m scripts.pipeline.cli build-paper` to compile `paper.pdf`
-4. `python -m scripts.pipeline.cli full-refresh` to rerun full benchmark + matrix + direct baseline + paper
+2. `python -m scripts.pipeline.cli validate` to enforce experiment/paper artifact integrity checks and write provenance
+3. `python -m scripts.pipeline.cli refresh-artifacts` to regenerate tables/plots/reports (gated by experiment validation)
+4. `python -m scripts.pipeline.cli build-paper` to compile `paper.pdf` (gated by paper artifact validation)
+5. `python -m scripts.pipeline.cli full-refresh` to rerun full benchmark + matrix + direct baseline + paper
+
+Validation/provenance output:
+
+- `runs/pipeline/provenance_manifest.json` stores config hash, git commit, timestamp, and validation evidence for each stage.
 
 Legacy wrappers (still supported):
 

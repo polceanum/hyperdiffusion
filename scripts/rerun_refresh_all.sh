@@ -13,7 +13,7 @@ cd "$ROOT"
   --batch-size 32 \
   --support-sweep-batches 8 \
   --diagnostic-samples 4 \
-  --visualization-count 0 \
+  --visualization-count 4 \
   --reward-audit-batches 6 \
   --reward-audit-batch-size 16 \
   --seeds 0 1 2

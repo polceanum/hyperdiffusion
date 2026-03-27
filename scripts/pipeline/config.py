@@ -24,7 +24,7 @@ class PipelineConfig:
     batch_size: int = 32
     support_sweep_batches: int = 8
     diagnostic_samples: int = 4
-    visualization_count: int = 0
+    visualization_count: int = 4
     reward_audit_batches: int = 6
     reward_audit_batch_size: int = 16
     seeds: tuple[int, ...] = (0, 1, 2)
