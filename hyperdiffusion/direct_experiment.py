@@ -7,12 +7,14 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Dict, List, Optional
 
+import numpy as np
 import torch
 import torch.nn.functional as F
 
 from .direct_baseline import DirectSystem
 from .experiment import ExperimentConfig, MetricsTracker
 from .tasks import (
+    CONTROL_FAMILIES,
     DEFAULT_BANDIT_EVAL_FAMILIES,
     DEFAULT_BANDIT_TRAIN_FAMILIES,
     DEFAULT_CONTROL_EVAL_FAMILIES,
@@ -245,6 +247,88 @@ class DirectExperiment:
             "num_eval_episodes": len(direct_metrics),
         }
 
+    @staticmethod
+    def _summarize_reward_rows(rows: List[Dict[str, float]]) -> Dict[str, float]:
+        if not rows:
+            return {
+                "episodes": 0,
+                "mean_delta_ls": 0.0,
+                "median_delta_ls": 0.0,
+                "win_rate_vs_static": 0.0,
+                "p10_delta_ls": 0.0,
+                "p90_delta_ls": 0.0,
+                "mean_delta_lz": 0.0,
+                "win_rate_vs_zero": 0.0,
+            }
+        dls = np.asarray([r["delta_ls"] for r in rows], dtype=float)
+        dlz = np.asarray([r["delta_lz"] for r in rows], dtype=float)
+        return {
+            "episodes": int(len(rows)),
+            "mean_delta_ls": float(dls.mean()),
+            "median_delta_ls": float(np.median(dls)),
+            "win_rate_vs_static": float((dls > 0).mean()),
+            "p10_delta_ls": float(np.quantile(dls, 0.10)),
+            "p90_delta_ls": float(np.quantile(dls, 0.90)),
+            "mean_delta_lz": float(dlz.mean()),
+            "win_rate_vs_zero": float((dlz > 0).mean()),
+        }
+
+    @torch.no_grad()
+    def _control_reward_audit(self, family_names: List[str], num_batches: int, batch_size: int) -> Dict[str, object]:
+        self.system.eval()
+        self.baseline.eval()
+        rows: List[Dict[str, float]] = []
+
+        for _ in range(num_batches):
+            batch = self.to_device(make_episode_batch(
+                batch_size=batch_size,
+                support_size=self.config.support_size,
+                query_size=self.config.query_size,
+                family_names=family_names,
+                task_type=self.config.task_type,
+            ))
+            context = self._encode_batch(batch.support_x, batch.support_y, batch.family_name)
+            for i in range(batch.support_x.shape[0]):
+                family = CONTROL_FAMILIES.get(batch.family_name[i])
+                if family is None:
+                    continue
+
+                def learned_policy(state: torch.Tensor) -> torch.Tensor:
+                    x = state.view(1, 1, -1).to(self.device)
+                    action = self.system(
+                        batch.support_x[i:i+1],
+                        batch.support_y[i:i+1],
+                        x,
+                        context=context[i:i+1],
+                    ).squeeze().item()
+                    return torch.tensor([action], dtype=torch.float32)
+
+                def static_policy(state: torch.Tensor) -> torch.Tensor:
+                    action = self.baseline(state.view(1, -1).to(self.device)).squeeze().item()
+                    return torch.tensor([action], dtype=torch.float32)
+
+                def zero_policy(state: torch.Tensor) -> torch.Tensor:
+                    return torch.zeros(1, dtype=torch.float32)
+
+                initial_state = batch.support_x[i, 0]
+                learned = family.rollout(learned_policy, initial_state, num_steps=80, dt=0.05)
+                static = family.rollout(static_policy, initial_state, num_steps=80, dt=0.05)
+                zero = family.rollout(zero_policy, initial_state, num_steps=80, dt=0.05)
+                l_final = float(learned["cumulative_rewards"][-1])
+                s_final = float(static["cumulative_rewards"][-1])
+                z_final = float(zero["cumulative_rewards"][-1])
+                rows.append({
+                    "family": batch.family_name[i],
+                    "delta_ls": l_final - s_final,
+                    "delta_lz": l_final - z_final,
+                })
+
+        by_family: Dict[str, object] = {}
+        for family in sorted(set(r["family"] for r in rows)):
+            family_rows = [r for r in rows if r["family"] == family]
+            by_family[family] = self._summarize_reward_rows(family_rows)
+        return {"overall": self._summarize_reward_rows(rows), "by_family": by_family}
+
     def run(self) -> None:
         """Run full training."""
         print(f"[DirectExperiment] Starting training")
@@ -285,6 +369,15 @@ class DirectExperiment:
             "eval_batches": self.config.eval_batches,
             "eval_families": self.config.eval_families or self._default_eval_families(),
         }
+
+        if self.config.task_type == "control":
+            summary["reward_audit"] = {
+                "eval": self._control_reward_audit(
+                    summary["eval_families"],
+                    num_batches=self.config.reward_audit_batches,
+                    batch_size=self.config.reward_audit_batch_size,
+                )
+            }
 
         summary_path = self.output_dir / "summary.json"
         with open(summary_path, "w") as f:

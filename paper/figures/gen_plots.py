@@ -70,9 +70,12 @@ def load_direct_baseline_multiseed(path: Path):
         overall = data.get("overall", {})
         direct_metric = overall.get("direct_r2", overall.get("direct_acc"))
         static_metric = overall.get("baseline_r2", overall.get("baseline_acc"))
-        grouped.setdefault(mode, {"direct": [], "static": []})
+        reward_audit = (data.get("reward_audit") or {}).get("eval", {}).get("overall", {})
+        reward_winrate = reward_audit.get("win_rate_vs_static")
+        grouped.setdefault(mode, {"direct": [], "static": [], "reward_winrate": []})
         grouped[mode]["direct"].append(direct_metric)
         grouped[mode]["static"].append(static_metric)
+        grouped[mode]["reward_winrate"].append(reward_winrate)
 
     out = {}
     for mode, vals in grouped.items():
@@ -80,6 +83,8 @@ def load_direct_baseline_multiseed(path: Path):
         out[mode] = {
             "direct_mean": safe_mean(direct_list),
             "direct_std": safe_std(direct_list),
+            "reward_winrate_mean": safe_mean(vals.get("reward_winrate", [])),
+            "reward_winrate_std": safe_std(vals.get("reward_winrate", [])),
             "num_seeds": len([v for v in direct_list if v is not None]),
         }
     return out
@@ -293,9 +298,38 @@ def plot_encoding_mode_ablation():
     ax1.set_ylim(-0.3, 1.05)
     ax1.axhline(0, color="gray", linewidth=0.5, linestyle="--")
     
-    # Right panel: Reward win-rate (use mode colors)
+    # Right panel: Reward win-rate (mode bars + direct support marker/bar when available)
     mode_colors = [COLORS.get(m, "#cccccc") for m in modes]
-    ax2.bar(mode_labels, winrates, yerr=win_std, capsize=3, color=mode_colors)
+    ax2.bar(mode_labels, winrates, yerr=win_std, capsize=3, color=mode_colors, label="Encoder modes")
+
+    direct_support_reward = (direct_baseline_multiseed.get("control", {}).get("support") or {}).get("reward_winrate_mean")
+    direct_support_reward_std = (direct_baseline_multiseed.get("control", {}).get("support") or {}).get("reward_winrate_std")
+    if direct_support_reward is not None:
+        x_direct = len(mode_labels)
+        ax2.bar(
+            [x_direct],
+            [direct_support_reward],
+            yerr=[direct_support_reward_std if direct_support_reward_std is not None else 0.0],
+            capsize=3,
+            color=COLORS["direct_baseline"],
+            label="Direct (support)",
+        )
+        labels = mode_labels + ["Direct\n(support)"]
+        ax2.set_xticks(np.arange(len(labels)))
+        ax2.set_xticklabels(labels, fontsize=8)
+        ax2.text(
+            x_direct,
+            direct_support_reward + 0.03,
+            f"{direct_support_reward*100:.1f}%",
+            ha="center",
+            fontsize=7,
+            fontweight="bold",
+            color=COLORS["direct_baseline"],
+        )
+    else:
+        ax2.set_xticks(np.arange(len(mode_labels)))
+        ax2.set_xticklabels(mode_labels, fontsize=8)
+
     ax2.set_ylabel("Reward Win-Rate vs. Baseline (mean ± std)", fontsize=8)
     ax2.set_title("OOD Reward Win-Rate by Mode", fontsize=9)
     ax2.set_ylim(0, 1.08)
@@ -304,6 +338,7 @@ def plot_encoding_mode_ablation():
     for i, v in enumerate(winrates):
         ax2.text(i, v + 0.03, f"{v*100:.1f}%", ha="center", fontsize=7, fontweight="bold")
     ax2.tick_params(labelsize=7)
+    ax2.legend(fontsize=7, loc="upper right")
     
     n_seeds = control_matrix_agg.get("num_seeds", "?") if source == "multiseed" else "1"
     fig.suptitle(f"Encoding-Mode Ablation (Control OOD, {n_seeds} seed{'s' if n_seeds != '1' else ''})", 

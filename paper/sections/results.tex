@@ -9,6 +9,7 @@ The primary model applies the deterministic encoder latent $z$ directly to the h
 We also evaluate a diffusion add-on that applies DDIM sampling conditioned on the encoder context;
 for parameter-reconstruction metrics we report the mean over $K{=}8$ samples.
 The \emph{Baseline} is a static MLP with no access to support data, trained jointly as a task-agnostic predictor.
+This baseline is learned, but non-adaptive (single policy for all tasks), unlike support-conditioned methods.
 
 \paragraph{Task families.}
 \emph{Classification} (8 train / 0 explicit eval families): 2D binary tasks spanning linear, XOR-style nonlinear separability, moons/circles manifolds, sinusoidal boundaries, and checkerboard/ring structure.
@@ -38,18 +39,18 @@ across all four domains. Detailed per-family breakdowns are provided in Tables~\
 \input{tables/per_family_results}
 
 \paragraph{Classification.}
-The encoder achieves 82.34\% accuracy on the classification evaluation split, surpassing
-the static baseline by 23.4\% relative improvement (baseline: 66.68\%).
-The diffusion add-on closely matches the encoder at 82.36\%, consistent with the observation that
+The encoder achieves 83.31\% accuracy on the classification evaluation split, surpassing
+the static baseline by 24.8\% relative improvement (baseline: 66.8\%).
+The diffusion add-on closely matches the encoder at 83.46\%, consistent with the observation that
 classification tasks admit low-variance latent codes---the posterior over classifiers
 is near-deterministic given 16 support points.
 Per-family breakdown shows encoder accuracy ranges from 67.39\% (imbalanced) to
 95.44\% (XOR), with solid generalization across diverse OOD family geometries.
 
 \paragraph{Regression.}
-The encoder achieves $R^2 = 0.7015$ on the regression evaluation summary, a dramatic 
-139.3\% relative improvement over the static baseline ($R^2 = -1.7877$), which predicts 
-systematic negative variance-explained. The diffusion add-on achieves $R^2 = 0.6693$, 
+The encoder achieves $R^2 = 0.626$ on the regression evaluation summary, a dramatic 
+135.2\% relative improvement over the static baseline ($R^2 = -1.778$), which predicts 
+systematic negative variance-explained. The diffusion add-on achieves $R^2 = 0.567$, 
 closely tracking the encoder with modest variance. Per-family analysis reveals robust 
 generalization: the encoder achieves $R^2 > 0.75$ on sawtooth and cubic-spline families, 
 but lower performance ($R^2 \approx 0.55$--$0.59$) on Gaussian-bump and piecewise families,
@@ -57,29 +58,37 @@ where localized or discontinuous structure increases ambiguity from sparse suppo
 
 \paragraph{Bandit.}
 Bandit reward-surface reconstruction is the most challenging domain: the encoder 
-achieves $R^2 = 0.0241$ (barely above zero) with substantial improvement 
-over baseline ($R^2 = -2.287$). The diffusion add-on achieves $R^2 = 0.0317$. The near-zero $R^2$ 
+achieves $R^2 = 0.136$ (still low absolute fit) with substantial improvement 
+over baseline ($R^2 = -2.280$). The diffusion add-on achieves $R^2 = 0.110$. 
 reflects fundamental difficulty: bandit reward landscapes exhibit high sensitivity to 
 policy parameters in 2D action space, and limited support coverage ($N=16$) coupled with 
 qualitative regime changes amplifies generalization error. The model correctly identifies 
 structural patterns but absolute reconstruction remains challenging.
 
 \paragraph{Control.}
-The encoder achieves $R^2 = 0.9968$ on control policy parameter reconstruction, 
+The encoder achieves $R^2 = 0.994$ on control policy parameter reconstruction, 
 demonstrating near-perfect reconstruction performance from 16 support trajectories.
-The static baseline achieves $R^2 = 0.7891$ (26.3\% relative improvement for encoder),
+The static baseline achieves $R^2 = 0.792$ (25.6\% relative improvement for encoder),
 reflecting shared qualitative structure across dynamics families (negative feedback stabilization)
-but limited adaptation to fine-grained task geometry. The diffusion add-on achieves $R^2 = 0.9868$,
+but limited adaptation to fine-grained task geometry. The diffusion add-on achieves $R^2 = 0.989$,
 closely tracking the encoder with small variance, validating that the learned latent 
 code concentrates near a deterministic optimum.
 
 \paragraph{Cross-domain synthesis.}
 The benchmark reveals a clear domain-difficulty hierarchy: control is near-ceiling
-($R^2 = 0.9968$), classification is strong (82.34\%), regression is moderate but robust
-($R^2 = 0.7015$), and bandit remains fundamentally hard ($R^2 = 0.0241$). The diffusion add-on
+($R^2 = 0.994$), classification is strong (83.31\%), regression is moderate but robust
+($R^2 = 0.626$), and bandit remains fundamentally hard ($R^2 = 0.136$). The diffusion add-on
 tracks encoder performance closely in all domains, with the largest absolute gap in
 regression, indicating that most uncertainty arises from task ambiguity rather than
 sampling variance in latent space.
+
+\paragraph{Direct-baseline cross-check.}
+Using 3-seed support-mode direct baselines, we obtain: classification $0.789\pm0.017$,
+bandit $0.142\pm0.033$, control $0.973\pm0.002$, and regression $-0.325\pm0.143$.
+Direct baseline is competitive in classification/bandit/control (including a slight edge over
+diffusion on bandit in this run), but substantially worse on regression.
+This confirms that direct predictions are not uniformly superior; the relative ordering is
+task-dependent and should be interpreted per-domain.
 
 \paragraph{OOD sanity check (artifact-backed).}
 For runs that include explicit held-out evaluation families in
@@ -94,6 +103,8 @@ For control tasks we report negative quadratic cost as reward; higher (less nega
 is better. A policy \emph{wins} an episode if its cumulative reward exceeds that of the
 static baseline on the same episode. We report reward win-rate and mean $\Delta$Reward
 (meta-policy minus static baseline) separately from reconstruction $R^2$.
+Hence, a negative mean $\Delta$Reward indicates the adaptive policy underperforms the
+static learned baseline in cumulative reward under this protocol.
 
 \subsection{Encoding-Mode Ablation}
 
@@ -109,17 +120,18 @@ on the control task with OOD eval families across three independent seeds.
 \caption{Encoding-mode ablation on control tasks (OOD eval families).
 	\emph{Left}: R\textsuperscript{2} for parameter reconstruction---\emph{support} mode
 wins because it has direct access to demonstrations. \emph{Right}: reward win-rate
-versus the static baseline with 3-seed error bars (mean$\pm$std). All meta-learned
+versus the static baseline with 3-seed error bars (mean$\pm$std), including the
+direct baseline support-mode point when available. All meta-learned
 modes remain below the static baseline in this protocol; \emph{hybrid} has the highest
-mean win-rate (25.7\%$\pm$10.8\%), while \emph{text} is most variable
-(21.2\%$\pm$19.9\%). Family descriptions use semantic embeddings from DistilBERT.}
+mean win-rate (26.7\%$\pm$5.1\%), followed by \emph{support} (25.7\%$\pm$12.4\%).
+Family descriptions use semantic embeddings from DistilBERT.}
 \label{fig:encoding_modes}
 \end{figure}
 
 \paragraph{Reconstruction--reward gap.}
 A key empirical finding is the \emph{reconstruction--reward gap}: support mode with
 $R^2 = 0.969\pm0.006$ (near-perfect parameter recovery) achieves only
-$18.8\%\pm3.6\%$ reward win-rate, well below 50\%.
+$25.7\%\pm12.4\%$ reward win-rate, well below 50\%.
 This indicates that accurate parameter-space reconstruction does not directly translate
 to better deployed reward: the static baseline happens to produce a reward-competitive
 policy for the OOD evaluation dynamics even though it cannot reconstruct those dynamics.
@@ -128,26 +140,23 @@ gain over a strong baseline, not as an absolute measure of adaptation quality.
 
 \paragraph{Text-mode trade-off.}
 The \emph{text} encoding trails support mode on parameter reconstruction
-($R^2$: $0.782\pm0.058$ vs $0.969\pm0.006$), but achieves competitive
-reward win-rate ($21.2\%\pm19.9\%)$ with high cross-seed variance.
+($R^2$: $0.812\pm0.051$ vs $0.968\pm0.006$), and also underperforms on
+reward win-rate ($4.5\%\pm4.7\%$).
 This suggests language descriptions encode useful high-level task intent (linear vs.
 non-linear dynamics, stiffness, drift direction) while lacking the fidelity needed for
 precise low-level parameter identification.
-The high variance indicates text-mode generalisation is sensitive to training seed,
-presumably because the text projector is trained from a frozen LLM embedding that
-was not designed for this task distribution.
+Text-mode therefore appears insufficient as a standalone modality in this setting.
 
 \paragraph{Hybrid mode.}
-The hybrid mode ($\alpha = 0.5$) achieves $R^2 = 0.962\pm0.014$ reconstruction,
-close to support mode, while achieving the best mean reward win-rate ($25.7\%\pm10.8\%$).
+The hybrid mode ($\alpha = 0.5$) achieves $R^2 = 0.966\pm0.005$ reconstruction,
+close to support mode, while achieving the best mean reward win-rate ($26.7\%\pm5.1\%$).
 Combining demonstration-level fidelity with language-level semantic abstraction appears
 complementary for reward transfer, suggesting the two modalities carry partially independent
 task information.
 
 \paragraph{Oracle collapse.}
-The \emph{oracle} mode (one-hot family index) achieves $R^2 = 0.849\pm0.017$---
-respectable reconstruction---but collapses on reward transfer to $6.6\%\pm6.3\%$,
-worse than all other modes.
+The \emph{oracle} mode (one-hot family index) achieves $R^2 = 0.838\pm0.036$ and
+reward win-rate $14.6\%\pm24.4\%$, with very high variance across seeds.
 This is a counter-intuitive result: knowing the exact family identity is worse for
 deployed performance than using noisy language descriptions.
 We hypothesise that oracle conditioning causes the model to overfit the mean policy of
@@ -187,6 +196,10 @@ The gain from $N = 1$ to $N = 4$ is large; gains plateau more slowly beyond $N =
 suggesting the current support size is near the saturation regime for this task class.
 
 \subsection{Qualitative Examples}
+
+These qualitative panels compare the core hypernetwork variants (encoder, diffusion,
+static baseline). Direct baseline is compared quantitatively in
+Figure~\ref{fig:task_benchmark} and the direct-baseline summaries.
 
 \begin{figure}[ht]
 \centering

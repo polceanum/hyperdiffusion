@@ -65,3 +65,11 @@ At meta-test time, given support set $S$, we:
   \item Evaluate the resulting target networks; when diffusion sampling is used, we report both single-sample and best-of-$k$ summaries where relevant.
 \end{enumerate}
 The deterministic encoder path is the primary model in the paper; the diffusion path is included as an exploratory extension.
+
+\paragraph{Static vs adaptive learners.}
+The \emph{static baseline} is still a learned model, but it is trained as a single
+task-agnostic predictor and does not condition on the support set at test time.
+By contrast, the encoder/diffusion/direct systems are \emph{adaptive}: they ingest
+support data for each episode and produce task-conditioned predictions.
+Thus, reward comparisons against the static baseline measure the marginal value of
+per-episode adaptation over a strong non-adaptive learned policy.
