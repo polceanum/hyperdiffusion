@@ -14,6 +14,22 @@ def fmt_pct(x):
     return "--" if x is None else f"{x * 100:.1f}\\%"
 
 
+def fmt_pm(mean, std, digits=3):
+    if mean is None:
+        return "--"
+    if std is None:
+        return fmt(mean, digits)
+    return f"{mean:.{digits}f} $\\pm$ {std:.{digits}f}"
+
+
+def fmt_pct_pm(mean, std):
+    if mean is None:
+        return "--"
+    if std is None:
+        return fmt_pct(mean)
+    return f"{mean * 100:.1f}\\% $\\pm$ {std * 100:.1f}\\%"
+
+
 TASK_DISPLAY = [
     ("classification", "Classification", "Acc."),
     ("regression", "Regression", "R\\textsuperscript{2}"),
@@ -85,28 +101,51 @@ def load_matrix_rows():
     return [], None
 
 
-def gen_encoding_mode_table():
-    rows, src = load_matrix_rows()
-    if src is None:
-        note = "(results pending)"
-    elif "v2" in src:
-        note = "(DistilBERT embeddings, 1000 steps)"
-    else:
-        note = "(hashed bag-of-words, 300 steps)"
+def load_matrix_aggregate_rows():
+    p = runs / "control_matrix_v2_multiseed" / "aggregate.json"
+    if not p.exists():
+        return None
+    data = json.loads(p.read_text())
+    return data.get("summary_table", []), data.get("num_seeds", 0)
 
+
+def gen_encoding_mode_table():
+    agg = load_matrix_aggregate_rows()
     body_lines = []
-    for row in rows:
-        mode = MODE_DISPLAY.get(row.get("encoding_mode", "?"), row.get("encoding_mode", "?"))
-        enc_r2 = row.get("eval_encoder_r2")
-        diff_r2 = row.get("eval_diffusion_r2")
-        base_r2 = row.get("eval_static_baseline_r2")
-        winrate = row.get("eval_reward_winrate_vs_static")
-        delta = row.get("eval_reward_mean_delta_ls")
-        line = (
-            f"  {mode} & {fmt(enc_r2)} & {fmt(diff_r2)} & {fmt(base_r2)} & "
-            f"{fmt_pct(winrate)} & {fmt(delta, 2)} \\\\"
-        )
-        body_lines.append(line)
+    if agg is not None:
+        rows, n_seeds = agg
+        note = f"(DistilBERT embeddings, 1000 steps, {n_seeds} seeds; mean$\\pm$std)"
+        for row in rows:
+            mode = MODE_DISPLAY.get(row.get("encoding_mode", "?"), row.get("encoding_mode", "?"))
+            line = (
+                f"  {mode} & "
+                f"{fmt_pm(row.get('eval_encoder_r2_mean'), row.get('eval_encoder_r2_std'))} & "
+                f"{fmt_pm(row.get('eval_diffusion_r2_mean'), row.get('eval_diffusion_r2_std'))} & "
+                f"{fmt_pm(row.get('eval_static_baseline_r2_mean'), row.get('eval_static_baseline_r2_std'))} & "
+                f"{fmt_pct_pm(row.get('eval_reward_winrate_vs_static_mean'), row.get('eval_reward_winrate_vs_static_std'))} & "
+                f"{fmt_pm(row.get('eval_reward_mean_delta_ls_mean'), row.get('eval_reward_mean_delta_ls_std'), 2)} \\\\"
+            )
+            body_lines.append(line)
+    else:
+        rows, src = load_matrix_rows()
+        if src is None:
+            note = "(results pending)"
+        elif "v2" in src:
+            note = "(DistilBERT embeddings, 1000 steps)"
+        else:
+            note = "(hashed bag-of-words, 300 steps)"
+        for row in rows:
+            mode = MODE_DISPLAY.get(row.get("encoding_mode", "?"), row.get("encoding_mode", "?"))
+            enc_r2 = row.get("eval_encoder_r2")
+            diff_r2 = row.get("eval_diffusion_r2")
+            base_r2 = row.get("eval_static_baseline_r2")
+            winrate = row.get("eval_reward_winrate_vs_static")
+            delta = row.get("eval_reward_mean_delta_ls")
+            line = (
+                f"  {mode} & {fmt(enc_r2)} & {fmt(diff_r2)} & {fmt(base_r2)} & "
+                f"{fmt_pct(winrate)} & {fmt(delta, 2)} \\\\"
+            )
+            body_lines.append(line)
 
     body = "\n".join(body_lines) if body_lines else "  \\multicolumn{6}{c}{(results pending)} \\\\"
 

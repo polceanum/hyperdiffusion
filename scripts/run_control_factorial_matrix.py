@@ -114,7 +114,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--visualization-count", type=int, default=0)
     p.add_argument("--visualization-grid-size", type=int, default=120)
     p.add_argument("--encoder-type", type=str, choices=["attention", "deepset"], default="attention")
-    p.add_argument("--text-embedding-dim", type=int, default=128)
+    p.add_argument("--text-embedding-dim", type=int, default=768)
     p.add_argument("--text-mix-alpha", type=float, default=0.5)
     p.add_argument("--reward-audit-batches", type=int, default=8)
     p.add_argument("--reward-audit-batch-size", type=int, default=16)

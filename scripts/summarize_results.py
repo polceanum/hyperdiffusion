@@ -58,6 +58,13 @@ def read_matrix_results(matrix_dir: str):
     return data.get("table", [])
 
 
+def read_multiseed_aggregate(path: str = "runs/control_matrix_v2_multiseed/aggregate.json"):
+    p = Path(path)
+    if not p.exists():
+        return None
+    return json.loads(p.read_text())
+
+
 # ──────────────────────────────────────────────────────────
 # section 1 – per-task benchmark
 # ──────────────────────────────────────────────────────────
@@ -130,6 +137,39 @@ def print_matrix_section(title, matrix_dir, note=None):
     print()
 
 
+def print_multiseed_section():
+    data = read_multiseed_aggregate()
+    print("=" * 68)
+    print("  SECTION 2c — Encoding-Mode Ablation  [DistilBERT, 3 seeds]")
+    print("=" * 68)
+    if data is None:
+        print("  [not found: runs/control_matrix_v2_multiseed/aggregate.json]")
+        print()
+        return
+
+    rows = data.get("summary_table", [])
+    n = data.get("num_seeds", "?")
+    print(f"  Aggregated over {n} seeds (mean ± std)")
+    print(f"  {'Mode':<10}  {'Enc R²':>18}  {'Diff R²':>18}  {'Base R²':>18}  {'Rew WinRate':>18}  {'ΔReward':>16}")
+    print("  " + "-" * 130)
+    for row in rows:
+        mode = row.get("encoding_mode", "?")
+        enc_m, enc_s = row.get("eval_encoder_r2_mean"), row.get("eval_encoder_r2_std")
+        diff_m, diff_s = row.get("eval_diffusion_r2_mean"), row.get("eval_diffusion_r2_std")
+        base_m, base_s = row.get("eval_static_baseline_r2_mean"), row.get("eval_static_baseline_r2_std")
+        win_m, win_s = row.get("eval_reward_winrate_vs_static_mean"), row.get("eval_reward_winrate_vs_static_std")
+        d_m, d_s = row.get("eval_reward_mean_delta_ls_mean"), row.get("eval_reward_mean_delta_ls_std")
+        print(
+            f"  {mode:<10}  "
+            f"{f'{enc_m:.3f}±{enc_s:.3f}' if enc_m is not None else 'n/a':>18}  "
+            f"{f'{diff_m:.3f}±{diff_s:.3f}' if diff_m is not None else 'n/a':>18}  "
+            f"{f'{base_m:.3f}±{base_s:.3f}' if base_m is not None else 'n/a':>18}  "
+            f"{f'{100*win_m:.1f}%±{100*win_s:.1f}%' if win_m is not None else 'n/a':>18}  "
+            f"{f'{d_m:.2f}±{d_s:.2f}' if d_m is not None else 'n/a':>16}"
+        )
+    print()
+
+
 # ──────────────────────────────────────────────────────────
 # section 3 – key conclusions
 # ──────────────────────────────────────────────────────────
@@ -150,9 +190,9 @@ def print_conclusions():
          "than just the mean."),
 
         ("C3", "Text mode improves semantics, not precision",
-         "Text encoding tends to lag support mode on parameter-reconstruction R², "
-         "but can still provide useful behavioural priors for control transfer. "
-         "Its reward impact is protocol-sensitive and should be validated per run."),
+         "Text encoding lags support/hybrid on reconstruction R² but remains "
+         "competitive on reward transfer with high seed-to-seed variance. "
+         "Its behavioural impact is real but less stable."),
 
         ("C4", "Support mode wins on parameter reconstruction",
          "Attention over (x,y) pairs produces better R² than text or hybrid, "
@@ -164,10 +204,10 @@ def print_conclusions():
          "memorising a family label alone is insufficient — the model needs "
          "either actual demonstrations or semantic task priors to generalise."),
 
-        ("C6", "Hybrid mode does not improve over support alone",
-         "Mixing text and support with α=0.5 hurts reward performance compared to "
-         "pure support mode, suggesting the text signal introduces noise into an "
-         "otherwise well-tuned support representation."),
+        ("C6", "Hybrid often improves reward robustness",
+         "Across multiseed runs, hybrid has the strongest average reward win-rate, "
+         "suggesting that blending semantic priors with support evidence can "
+         "improve robustness even when support-only wins on R²."),
     ]
 
     for code, title, detail in conclusions:
@@ -207,6 +247,8 @@ def main():
         note="Text embedding uses distilbert-base-uncased CLS token (768-dim). "
              "If this section is missing the run is still in progress.",
     )
+
+    print_multiseed_section()
 
     print_conclusions()
 

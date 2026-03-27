@@ -20,12 +20,12 @@ Task & Metric & Encoder & Diffusion & Baseline & Enc$-$Base \\
 \toprule
 Mode & Enc R\textsuperscript{2} & Diff R\textsuperscript{2} & Base R\textsuperscript{2} & Reward Win & $\Delta$Reward \\
 \midrule
-  Support & 0.977 & 0.966 & 0.787 & 16.7\% & -5.30 \\
-  Text (DistilBERT) & 0.794 & 0.448 & 0.790 & 21.9\% & -1.61 \\
-  Hybrid & 0.974 & 0.970 & 0.787 & 12.5\% & -5.73 \\
-  Oracle & 0.886 & 0.833 & 0.794 & 1.0\% & -2.60 \\
+  Support & 0.969 $\pm$ 0.006 & 0.946 $\pm$ 0.011 & 0.813 $\pm$ 0.024 & 18.8\% $\pm$ 3.6\% & -6.04 $\pm$ 1.63 \\
+  Text (DistilBERT) & 0.782 $\pm$ 0.058 & 0.203 $\pm$ 0.858 & 0.817 $\pm$ 0.023 & 21.2\% $\pm$ 19.9\% & -3.41 $\pm$ 1.25 \\
+  Hybrid & 0.962 $\pm$ 0.014 & 0.959 $\pm$ 0.014 & 0.822 $\pm$ 0.015 & 25.7\% $\pm$ 10.8\% & -3.47 $\pm$ 1.07 \\
+  Oracle & 0.849 $\pm$ 0.017 & 0.788 $\pm$ 0.031 & 0.816 $\pm$ 0.025 & 6.6\% $\pm$ 6.3\% & -1.69 $\pm$ 0.89 \\
 \bottomrule
 \end{tabular}
-\caption{Encoding-mode ablation on control tasks (DistilBERT embeddings, 1000 steps). \emph{Win-rate}: fraction of OOD eval episodes where the meta-learned policy out-scores the static baseline. $\Delta$Reward: mean reward improvement over static baseline.}
+\caption{Encoding-mode ablation on control tasks (DistilBERT embeddings, 1000 steps, 3 seeds; mean$\pm$std). \emph{Win-rate}: fraction of OOD eval episodes where the meta-learned policy out-scores the static baseline. $\Delta$Reward: mean reward improvement over static baseline.}
 \label{tab:encoding_modes}
 \end{table}

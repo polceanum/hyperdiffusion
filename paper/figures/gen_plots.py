@@ -61,9 +61,61 @@ def load_matrix(dirname):
         return json.loads(p.read_text()).get("table", [])
     return None
 
+
+def load_matrix_aggregate():
+    p = runs / "control_matrix_v2_multiseed" / "aggregate.json"
+    if p.exists():
+        return json.loads(p.read_text())
+    return None
+
+agg = load_matrix_aggregate()
 matrix_rows = load_matrix("control_matrix_v2") or load_matrix("control_matrix_main")
 
-if matrix_rows:
+if agg is not None and agg.get("summary_table"):
+    rows = agg.get("summary_table", [])
+    modes = [r["encoding_mode"] for r in rows]
+    mode_labels = [m.capitalize() for m in modes]
+    enc_r2s = [r.get("eval_encoder_r2_mean", 0) for r in rows]
+    diff_r2s = [r.get("eval_diffusion_r2_mean", 0) for r in rows]
+    base_r2s = [r.get("eval_static_baseline_r2_mean", 0) for r in rows]
+    winrates = [r.get("eval_reward_winrate_vs_static_mean", 0) for r in rows]
+    enc_std = [r.get("eval_encoder_r2_std", 0) for r in rows]
+    diff_std = [r.get("eval_diffusion_r2_std", 0) for r in rows]
+    base_std = [r.get("eval_static_baseline_r2_std", 0) for r in rows]
+    win_std = [r.get("eval_reward_winrate_vs_static_std", 0) for r in rows]
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(7.2, 3.0))
+    x = np.arange(len(modes))
+    w = 0.26
+    ax1.bar(x - w, enc_r2s, w, yerr=enc_std, capsize=3, label="Encoder", color="#4C72B0")
+    ax1.bar(x, diff_r2s, w, yerr=diff_std, capsize=3, label="Diffusion", color="#DD8452")
+    ax1.bar(x + w, base_r2s, w, yerr=base_std, capsize=3, label="Baseline", color="#55A868")
+    ax1.set_xticks(x); ax1.set_xticklabels(mode_labels, fontsize=8)
+    ax1.set_ylabel("R² (mean ± std)", fontsize=8)
+    ax1.set_title("R² by Encoding Mode", fontsize=9)
+    ax1.legend(fontsize=7)
+    ax1.tick_params(labelsize=7)
+    ax1.set_ylim(-0.3, 1.05)
+    ax1.axhline(0, color="gray", linewidth=0.5, linestyle="--")
+
+    colors = ["#4C72B0", "#DD8452", "#55A868", "#C44E52"]
+    ax2.bar(mode_labels, winrates, yerr=win_std, capsize=3, color=colors[:len(modes)])
+    ax2.set_ylabel("Reward Win-Rate vs. Baseline (mean ± std)", fontsize=8)
+    ax2.set_title("OOD Reward Win-Rate by Mode", fontsize=9)
+    ax2.set_ylim(0, 1.08)
+    ax2.axhline(1.0, color="gray", linewidth=0.5, linestyle="--")
+    for i, v in enumerate(winrates):
+        ax2.text(i, v + 0.03, f"{v*100:.1f}%", ha="center", fontsize=7, fontweight="bold")
+    ax2.tick_params(labelsize=7)
+
+    n = agg.get("num_seeds", "?")
+    fig.suptitle(f"Encoding-Mode Ablation (Control OOD, {n} seeds)", fontsize=9, y=1.02)
+    fig.tight_layout()
+    fig.savefig(plots_dir / "encoding_mode_ablation.png", dpi=110, bbox_inches="tight")
+    plt.close(fig)
+    print("[gen_plots] wrote encoding_mode_ablation.png (multiseed)")
+
+elif matrix_rows:
     modes        = [r["encoding_mode"] for r in matrix_rows]
     mode_labels  = [m.capitalize() for m in modes]
     enc_r2s      = [r.get("eval_encoder_r2",  0) for r in matrix_rows]

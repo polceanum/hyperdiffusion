@@ -37,18 +37,18 @@ on the control task with OOD eval families.
 \includegraphics[width=0.92\linewidth]{figures/plots/encoding_mode_ablation.png}
 \caption{Encoding-mode ablation on control tasks (OOD eval families).
 	\emph{Left}: R\textsuperscript{2} for parameter reconstruction---\emph{support} mode
-	wins because it has direct access to demonstrations. \emph{Right}: reward win-rate
-	versus the static baseline---all encoding modes underperform the static baseline
-	under this evaluation protocol, with \emph{text} mode performing best among meta-learned
-	modes (21.9\% win-rate) and \emph{support} close behind (16.7\%).
-	Family descriptions use semantic embeddings from DistilBERT.}
+wins because it has direct access to demonstrations. \emph{Right}: reward win-rate
+versus the static baseline with 3-seed error bars (mean$\pm$std). All meta-learned
+modes remain below the static baseline in this protocol; \emph{hybrid} has the highest
+mean win-rate (25.7\%$\pm$10.8\%), while \emph{text} is most variable
+(21.2\%$\pm$19.9\%). Family descriptions use semantic embeddings from DistilBERT.}
 \label{fig:encoding_modes}
 \end{figure}
 
 \paragraph{Text-mode trade-off.}
 The \emph{text} encoding still trails support mode on parameter reconstruction
-(R\textsuperscript{2}: 0.794 vs 0.977), but it outperforms the other non-support
-alternatives on reward transfer (win-rate 21.9\% vs 12.5\% for hybrid and 1.0\% for oracle).
+(R\textsuperscript{2}: $0.782\pm0.058$ vs $0.969\pm0.006$), but it remains competitive
+on reward transfer and has the largest variance across seeds.
 This suggests language descriptions encode useful high-level task intent, while lacking
 the fidelity needed for precise low-level dynamics identification.
 
@@ -58,8 +58,18 @@ Compared with the earlier short-run matrix (300-step, hashed text embedding), th
 This indicates control reward transfer is sensitive to training horizon and evaluation
 protocol details, and should be interpreted with matched seeds and repeated runs.
 
+\paragraph{Static baseline strength vs limitation.}
+The static baseline is strong on aggregate control reward under this evaluation setup,
+but remains clearly limited as a task-agnostic predictor: its reconstruction
+R\textsuperscript{2} is consistently below support/hybrid encoders and it lacks
+task-conditioned adaptation from support trajectories.
+In complex held-out dynamics (e.g., asymmetric and hard nonlinear regimes), qualitative
+surfaces indicate the baseline tends to underfit task-specific structure while
+meta-conditioned models capture richer response geometry.
+
 \paragraph{Oracle collapse.}
-The \emph{oracle} mode (one-hot family index) performs poorly on reward (1\% win-rate),
+The \emph{oracle} mode (one-hot family index) performs poorly on reward
+($6.6\%\pm6.3\%$ win-rate),
 demonstrating that memorising a family label is not sufficient for generalisation.
 The model requires either actual task demonstrations or semantic task descriptions to
 produce useful fast-weights.
