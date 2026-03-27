@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -e
 
+PY=${PY:-/usr/local/Caskroom/miniforge/base/envs/aurel/bin/python}
+
 if [[ "$1" == "clean" ]]; then
   echo "[paper] cleaning temporary files"
   rm -f paper/*.aux paper/*.log paper/*.out paper/*.fdb_latexmk paper/*.fls paper/*.synctex.gz paper/*.toc paper/*.lof paper/*.lot
@@ -11,8 +13,8 @@ if [[ "$1" == "clean" ]]; then
   exit 0
 fi
 
-python paper/tables/gen_tables.py
-python paper/figures/gen_plots.py
+"$PY" paper/tables/gen_tables.py
+"$PY" paper/figures/gen_plots.py
 
 cd paper
 export PATH="/usr/local/texlive/2026/bin/universal-darwin:$PATH"

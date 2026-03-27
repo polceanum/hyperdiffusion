@@ -10,6 +10,7 @@ mkdir -p runs
 echo "[$(date)] Cleaning previous v2 benchmark outputs"
 rm -rf runs/classification_v2 runs/regression_v2 runs/bandit_v2 runs/control_v2
 rm -rf runs/control_matrix_v2_multiseed
+rm -rf runs/direct_baseline_v2_multiseed
 rm -f runs/cls_v2.log runs/reg_v2.log runs/bandit_v2.log runs/ctrl_v2.log
 
 echo "[$(date)] Running full v2 benchmark suite"
@@ -34,6 +35,22 @@ echo "[$(date)] Aggregating control multiseed matrix"
 $PY scripts/aggregate_control_matrix_seeds.py \
   --input-root runs/control_matrix_v2_multiseed \
   --output runs/control_matrix_v2_multiseed/aggregate.json
+
+echo "[$(date)] Running direct baseline multiseed (all tasks)"
+$PY scripts/run_direct_baseline_multiseed.py \
+  --python "$PY" \
+  --output-root runs/direct_baseline_v2_multiseed \
+  --task-types classification regression bandit_regression control \
+  --modes support \
+  --seeds 0 1 2 \
+  --train-steps-stage1 1000 \
+  --train-steps-stage2 1000 \
+  --eval-batches 16 \
+  --batch-size 32 \
+  --support-sweep-batches 8 \
+  --visualization-count 0 \
+  --reward-audit-batches 6 \
+  --reward-audit-batch-size 16
 
 echo "[$(date)] Collecting audit outputs"
 $PY paper/audit_report.py > paper/results/audit_report.txt

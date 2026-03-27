@@ -4,10 +4,10 @@
 ====================================================================
   Task               Metric    Encoder  Diffusion   Baseline   Enc-Base
   ----------------------------------------------------------------
-  classification     acc         0.821      0.821      0.668      0.152
-  regression         r2          0.597      0.580     -1.784      2.382
-  bandit             r2          0.120      0.122     -2.302      2.421
-  control            r2          0.997      0.984      0.800      0.196
+  classification     acc         0.833      0.835      0.668      0.165
+  regression         r2          0.626      0.567     -1.778      2.404
+  bandit             r2          0.136      0.110     -2.280      2.416
+  control            r2          0.994      0.989      0.792      0.202
 
   Encoder = attention meta-learner over support set.
   Diffusion = DDIM sampler conditioned on support context (main model).
@@ -16,38 +16,12 @@
 ====================================================================
   SECTION 2a — Encoding-Mode Ablation  [hashed BOW text, 300 steps]
 ====================================================================
-  Mode          Enc R²   Diff R²   Base R²   Rew WinRate    ΔReward
-  ----------------------------------------------------------------
-  support        0.973     0.954     0.913         91.7%      3.295
-  text           0.716    -0.140     0.912        100.0%      3.907
-  hybrid         0.994     0.944     0.913         72.9%      2.435
-  oracle         0.884     0.830     0.904         28.1%     -3.918
-
-  Note: Text embedding was MD5 hash bag-of-words (not semantic) in this run.
-
-  Modes:
-    support  — Attention encoder over (x,y) pairs
-    text     — Family description → distilbert → projector
-    hybrid   — Weighted mix of support + text (α=0.5)
-    oracle   — One-hot family index (upper bound)
+  [not found: runs/control_matrix_main/matrix_summary.json]
 
 ====================================================================
   SECTION 2b — Encoding-Mode Ablation  [distilbert text, 1000 steps]
 ====================================================================
-  Mode          Enc R²   Diff R²   Base R²   Rew WinRate    ΔReward
-  ----------------------------------------------------------------
-  support        0.977     0.966     0.787         16.7%     -5.304
-  text           0.794     0.448     0.790         21.9%     -1.609
-  hybrid         0.974     0.970     0.787         12.5%     -5.734
-  oracle         0.886     0.833     0.794          1.0%     -2.596
-
-  Note: Text embedding uses distilbert-base-uncased CLS token (768-dim). If this section is missing the run is still in progress.
-
-  Modes:
-    support  — Attention encoder over (x,y) pairs
-    text     — Family description → distilbert → projector
-    hybrid   — Weighted mix of support + text (α=0.5)
-    oracle   — One-hot family index (upper bound)
+  [not found: runs/control_matrix_v2/matrix_summary.json]
 
 ====================================================================
   SECTION 2c — Encoding-Mode Ablation  [DistilBERT, 3 seeds]
@@ -55,10 +29,10 @@
   Aggregated over 3 seeds (mean ± std)
   Mode                    Enc R²             Diff R²             Base R²         Rew WinRate           ΔReward
   ----------------------------------------------------------------------------------------------------------------------------------
-  support            0.966±0.013         0.954±0.005         0.814±0.023          22.2%±7.1%        -4.51±2.22
-  text               0.831±0.029         0.686±0.011         0.817±0.020         10.8%±18.6%        -4.99±2.78
-  hybrid             0.966±0.007         0.958±0.010         0.817±0.021          21.5%±5.2%        -4.35±0.56
-  oracle             0.859±0.031         0.750±0.024         0.816±0.025          8.0%±11.2%        -2.75±1.07
+  support            0.968±0.006         0.948±0.012         0.816±0.023         25.7%±12.4%        -4.46±0.80
+  text               0.812±0.051        -0.041±1.290         0.817±0.024           4.5%±4.7%        -5.20±1.09
+  hybrid             0.966±0.005         0.964±0.004         0.817±0.018          26.7%±5.1%        -3.24±0.26
+  oracle             0.838±0.036         0.752±0.073         0.814±0.026         14.6%±24.4%        -1.85±0.87
 
 ====================================================================
   SECTION 3 — Key Conclusions

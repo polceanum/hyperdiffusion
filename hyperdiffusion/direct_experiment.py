@@ -13,10 +13,14 @@ import torch.nn.functional as F
 from .direct_baseline import DirectSystem
 from .experiment import ExperimentConfig, MetricsTracker
 from .tasks import (
+    DEFAULT_BANDIT_EVAL_FAMILIES,
+    DEFAULT_BANDIT_TRAIN_FAMILIES,
     DEFAULT_CONTROL_EVAL_FAMILIES,
     DEFAULT_CONTROL_TRAIN_FAMILIES,
+    DEFAULT_REGRESSION_EVAL_FAMILIES,
+    DEFAULT_REGRESSION_TRAIN_FAMILIES,
+    DEFAULT_TRAIN_FAMILIES,
     EpisodeBatch,
-    TASK_TEXT_DESCRIPTIONS,
     make_episode_batch,
 )
 
@@ -33,9 +37,20 @@ class DirectExperiment:
         # Set seed
         torch.manual_seed(config.seed)
 
+        if config.task_type == "classification":
+            input_dim = 2
+        elif config.task_type == "regression":
+            input_dim = 1
+        elif config.task_type in ("bandit_regression", "control"):
+            input_dim = 2
+        else:
+            raise ValueError(f"Unsupported task_type: {config.task_type}")
+
+        self.input_dim = input_dim
+
         # Initialize model
         self.system = DirectSystem(
-            x_dim=2,
+            x_dim=input_dim,
             y_dim=1,
             encoder_hidden=config.encoder_hidden,
             cond_dim=config.cond_dim,
@@ -48,7 +63,7 @@ class DirectExperiment:
 
         # Static baseline model (for comparison)
         self.baseline = torch.nn.Sequential(
-            torch.nn.Linear(2, config.encoder_hidden),
+            torch.nn.Linear(input_dim, config.encoder_hidden),
             torch.nn.SiLU(),
             torch.nn.Linear(config.encoder_hidden, config.encoder_hidden),
             torch.nn.SiLU(),
@@ -63,8 +78,33 @@ class DirectExperiment:
         self.metrics = MetricsTracker()
 
         # Family to index mapping for oracle
-        families = config.families or DEFAULT_CONTROL_TRAIN_FAMILIES
+        families = config.families or self._default_train_families()
         self.family_to_index = {name: idx for idx, name in enumerate(families)}
+
+    def _default_train_families(self) -> List[str]:
+        if self.config.task_type == "classification":
+            return DEFAULT_TRAIN_FAMILIES
+        if self.config.task_type == "regression":
+            return DEFAULT_REGRESSION_TRAIN_FAMILIES
+        if self.config.task_type == "bandit_regression":
+            return DEFAULT_BANDIT_TRAIN_FAMILIES
+        if self.config.task_type == "control":
+            return DEFAULT_CONTROL_TRAIN_FAMILIES
+        raise ValueError(f"Unsupported task_type: {self.config.task_type}")
+
+    def _default_eval_families(self) -> List[str]:
+        if self.config.task_type == "classification":
+            return self._default_train_families()
+        if self.config.task_type == "regression":
+            return DEFAULT_REGRESSION_EVAL_FAMILIES
+        if self.config.task_type == "bandit_regression":
+            return DEFAULT_BANDIT_EVAL_FAMILIES
+        if self.config.task_type == "control":
+            return DEFAULT_CONTROL_EVAL_FAMILIES
+        raise ValueError(f"Unsupported task_type: {self.config.task_type}")
+
+    def _metric_name(self) -> str:
+        return "acc" if self.config.task_type == "classification" else "r2"
 
     def _text_embedding(self, family_names: List[str]) -> torch.Tensor:
         """Get text embeddings for families (using DistilBERT-like mock)."""
@@ -118,10 +158,14 @@ class DirectExperiment:
 
     def _task_loss(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         """Task loss (MSE for control)."""
+        if self.config.task_type == "classification":
+            return F.binary_cross_entropy_with_logits(pred, target)
         return F.mse_loss(pred, target)
 
     def _metric(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         """R² metric for regression/control."""
+        if self.config.task_type == "classification":
+            return ((pred > 0.0) == (target > 0.5)).float().mean(dim=(1, 2))
         sse = ((pred - target) ** 2).sum(dim=(1, 2))
         mean_target = target.mean(dim=(1, 2), keepdim=True)
         sst = ((target - mean_target) ** 2).sum(dim=(1, 2)).clamp_min(1e-6)
@@ -173,7 +217,7 @@ class DirectExperiment:
         self.system.eval()
         self.baseline.eval()
 
-        families = families or (self.config.eval_families or DEFAULT_CONTROL_EVAL_FAMILIES)
+        families = families or (self.config.eval_families or self._default_eval_families())
 
         direct_metrics, baseline_metrics = [], []
 
@@ -194,9 +238,10 @@ class DirectExperiment:
             baseline_pred = self.baseline(batch.query_x.view(b * q, -1)).view(b, q, -1)
             baseline_metrics.extend(self._metric(baseline_pred, batch.query_y).tolist())
 
+        metric_name = self._metric_name()
         return {
-            "direct_r2": sum(direct_metrics) / len(direct_metrics) if direct_metrics else 0.0,
-            "baseline_r2": sum(baseline_metrics) / len(baseline_metrics) if baseline_metrics else 0.0,
+            f"direct_{metric_name}": sum(direct_metrics) / len(direct_metrics) if direct_metrics else 0.0,
+            f"baseline_{metric_name}": sum(baseline_metrics) / len(baseline_metrics) if baseline_metrics else 0.0,
             "num_eval_episodes": len(direct_metrics),
         }
 
@@ -206,7 +251,7 @@ class DirectExperiment:
         print(f"  Task: {self.config.task_type}, Mode: {self.config.encoding_mode}")
         print(f"  Seed: {self.config.seed}, Output: {self.output_dir}")
 
-        families = self.config.families or DEFAULT_CONTROL_TRAIN_FAMILIES
+        families = self.config.families or self._default_train_families()
 
         # Training loop
         for step in range(self.config.train_steps_stage1):
@@ -230,14 +275,15 @@ class DirectExperiment:
         eval_result = self.evaluate()
 
         # Save results
+        metric_name = self._metric_name()
         summary = {
             "config": asdict(self.config),
             "overall": {
-                f"direct_r2": eval_result["direct_r2"],
-                f"baseline_r2": eval_result["baseline_r2"],
+                f"direct_{metric_name}": eval_result[f"direct_{metric_name}"],
+                f"baseline_{metric_name}": eval_result[f"baseline_{metric_name}"],
             },
             "eval_batches": self.config.eval_batches,
-            "eval_families": self.config.eval_families or DEFAULT_CONTROL_EVAL_FAMILIES,
+            "eval_families": self.config.eval_families or self._default_eval_families(),
         }
 
         summary_path = self.output_dir / "summary.json"
@@ -245,13 +291,17 @@ class DirectExperiment:
             json.dump(summary, f, indent=2)
 
         print(f"[DirectExperiment] Results saved to {summary_path}")
-        print(f"  Direct R²: {eval_result['direct_r2']:.4f}")
-        print(f"  Baseline R²: {eval_result['baseline_r2']:.4f}")
+        if metric_name == "acc":
+            print(f"  Direct Acc: {eval_result['direct_acc']:.4f}")
+            print(f"  Baseline Acc: {eval_result['baseline_acc']:.4f}")
+        else:
+            print(f"  Direct R²: {eval_result['direct_r2']:.4f}")
+            print(f"  Baseline R²: {eval_result['baseline_r2']:.4f}")
 
 
 def main():
     parser = argparse.ArgumentParser(description="Direct baseline experiment")
-    parser.add_argument("--task-type", type=str, default="control")
+    parser.add_argument("--task-type", type=str, default="control", choices=["classification", "regression", "bandit_regression", "control"])
     parser.add_argument("--output-dir", type=str, required=True)
     parser.add_argument("--encoding-mode", type=str, default="support", choices=["support", "text", "hybrid", "oracle"])
     parser.add_argument("--seed", type=int, default=0)
@@ -259,14 +309,31 @@ def main():
     parser.add_argument("--train-steps-stage2", type=int, default=1000)  # Not used for direct
     parser.add_argument("--eval-batches", type=int, default=16)
     parser.add_argument("--batch-size", type=int, default=32)
+    parser.add_argument("--support-sweep-batches", type=int, default=8)  # accepted for wrapper compatibility
+    parser.add_argument("--visualization-count", type=int, default=0)  # accepted for wrapper compatibility
+    parser.add_argument("--reward-audit-batches", type=int, default=6)  # accepted for wrapper compatibility
+    parser.add_argument("--reward-audit-batch-size", type=int, default=16)  # accepted for wrapper compatibility
     parser.add_argument("--device", type=str, default="cpu")
 
     args = parser.parse_args()
 
+    if args.task_type == "classification":
+        families = DEFAULT_TRAIN_FAMILIES
+        eval_families = None
+    elif args.task_type == "regression":
+        families = DEFAULT_REGRESSION_TRAIN_FAMILIES
+        eval_families = DEFAULT_REGRESSION_EVAL_FAMILIES
+    elif args.task_type == "bandit_regression":
+        families = DEFAULT_BANDIT_TRAIN_FAMILIES
+        eval_families = DEFAULT_BANDIT_EVAL_FAMILIES
+    else:
+        families = DEFAULT_CONTROL_TRAIN_FAMILIES
+        eval_families = DEFAULT_CONTROL_EVAL_FAMILIES
+
     config = ExperimentConfig(
         task_type=args.task_type,
-        families=DEFAULT_CONTROL_TRAIN_FAMILIES,
-        eval_families=DEFAULT_CONTROL_EVAL_FAMILIES,
+        families=families,
+        eval_families=eval_families,
         encoding_mode=args.encoding_mode,
         seed=args.seed,
         train_steps_stage1=args.train_steps_stage1,

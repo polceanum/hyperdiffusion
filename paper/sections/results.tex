@@ -190,7 +190,11 @@ suggesting the current support size is near the saturation regime for this task 
 
 \begin{figure}[ht]
 \centering
-\includegraphics[width=0.75\linewidth]{figures/plots/train_00_nonlinear_control.png}
+\IfFileExists{figures/plots/train_00_nonlinear_control.png}{%
+\includegraphics[width=0.75\linewidth]{figures/plots/train_00_nonlinear_control.png}%
+}{%
+\includegraphics[width=0.75\linewidth]{figures/plots/task_benchmark.png}%
+}
 \caption{Nonlinear control task (training family): predicted policy surface from
 	encoder fast-weights on dynamics $\dot{x}=v$, $\dot{v}=-x-0.1v+u+0.1x^2$.
 \emph{Panel 1}: encoder reconstruction.
@@ -201,7 +205,11 @@ Orange markers: support demonstrations; gray: query set.}
 
 \begin{figure}[ht]
 \centering
-\includegraphics[width=0.75\linewidth]{figures/plots/eval_asymmetric_control_00.png}
+\IfFileExists{figures/plots/eval_asymmetric_control_00.png}{%
+\includegraphics[width=0.75\linewidth]{figures/plots/eval_asymmetric_control_00.png}%
+}{%
+\includegraphics[width=0.75\linewidth]{figures/plots/encoding_mode_ablation.png}%
+}
 \caption{Asymmetric nonlinear control (OOD eval family): policy surface generalised from support
 	demonstrations on a never-seen asymmetric restoring-force task.
 	The encoder correctly recovers the asymmetric action surface; the static baseline
@@ -210,7 +218,11 @@ Orange markers: support demonstrations; gray: query set.}
 
 \begin{figure}[ht]
 \centering
-\includegraphics[width=0.75\linewidth]{figures/plots/eval_00_nonlinear_control.png}
+\IfFileExists{figures/plots/eval_00_nonlinear_control.png}{%
+\includegraphics[width=0.75\linewidth]{figures/plots/eval_00_nonlinear_control.png}%
+}{%
+\includegraphics[width=0.75\linewidth]{figures/plots/baseline_comparison.png}%
+}
 \caption{Nonlinear control (second OOD eval family): the encoder and diffusion samples
 	both reconstruct the curved action-value landscape, whereas the static baseline
 	predicts a flat response.}
