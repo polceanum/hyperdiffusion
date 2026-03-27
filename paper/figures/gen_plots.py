@@ -517,7 +517,15 @@ def plot_baseline_comparison():
 def generate_annex():
     """Generate annex.tex with captions for diagnostic plots."""
     annex_path = root / "sections" / "annex.tex"
-    pngs = sorted((root / "figures" / "plots").glob("*.png"))
+    preferred_order = [
+        "task_benchmark.png",
+        "encoding_mode_ablation.png",
+        "support_sweep.png",
+        "adaptation_curve.png",
+        "uncertainty_summary.png",
+        "baseline_comparison.png",
+    ]
+    pngs = [root / "figures" / "plots" / name for name in preferred_order if (root / "figures" / "plots" / name).exists()]
 
     caption_map = {
         "support_sweep.png": "Support Size Sweep: Performance vs. number of support examples",
@@ -562,7 +570,7 @@ def generate_annex():
             f.write("\\end{center}\n")
             f.write(f"\\noindent\\textbf{{Caption:}} {caption}\n\n")
 
-    print(f"[gen_plots] wrote annex.tex ({len(pngs)} figures)")
+    print(f"[gen_plots] wrote annex.tex ({len(pngs)} curated figures)")
 
 
 if __name__ == "__main__":
