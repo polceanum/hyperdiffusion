@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import shutil
 import time
@@ -77,7 +76,7 @@ class ExperimentConfig:
     selector_lr: float = 1e-3
     selector_num_samples: int = 8
     encoding_mode: str = "support"
-    text_embedding_dim: int = 128
+    text_embedding_dim: int = 768
     text_mix_alpha: float = 0.5
     reward_audit_batches: int = 8
     reward_audit_batch_size: int = 16
@@ -135,13 +134,17 @@ class Experiment:
         self.encoding_mode = config.encoding_mode
         self.text_embedding_dim = config.text_embedding_dim
         self.text_mix_alpha = config.text_mix_alpha
+        _distilbert_dim = 768
         self.text_projector = torch.nn.Sequential(
-            torch.nn.Linear(self.text_embedding_dim, config.encoder_hidden),
+            torch.nn.Linear(_distilbert_dim, config.encoder_hidden),
             torch.nn.SiLU(),
             torch.nn.Linear(config.encoder_hidden, config.cond_dim + config.latent_dim),
         ).to(self.device)
         family_set = set(config.families or []) | set(config.eval_families or []) | set(TASK_TEXT_DESCRIPTIONS.keys())
         self.family_to_index = {name: idx for idx, name in enumerate(sorted(family_set))}
+        self._text_emb_cache: Dict[str, torch.Tensor] = {}
+        if config.encoding_mode in ("text", "hybrid"):
+            self._build_text_embedding_cache()
 
         # Ablation baseline with no hypernetwork / fast weights
         from .models import BaselineNetwork
@@ -168,19 +171,25 @@ class Experiment:
     def _family_description(self, family_name: str) -> str:
         return TASK_TEXT_DESCRIPTIONS.get(family_name, f"Task family {family_name.replace('_', ' ')}")
 
+    def _build_text_embedding_cache(self) -> None:
+        """Pre-compute distilbert CLS embeddings for all known task family descriptions."""
+        from transformers import AutoTokenizer, AutoModel  # lazy import to avoid startup cost
+        model_name = "distilbert-base-uncased"
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
+        bert = AutoModel.from_pretrained(model_name)
+        bert.eval()
+        all_names = sorted(set(self.family_to_index.keys()) | set(TASK_TEXT_DESCRIPTIONS.keys()))
+        texts = [self._family_description(n) for n in all_names]
+        with torch.no_grad():
+            inputs = tokenizer(texts, return_tensors="pt", truncation=True, max_length=64, padding=True)
+            out = bert(**inputs)
+            cls_embs = out.last_hidden_state[:, 0, :]  # (N, 768)
+        for name, emb in zip(all_names, cls_embs):
+            self._text_emb_cache[name] = emb.to(self.device)
+
     def _text_embedding(self, family_names: List[str]) -> torch.Tensor:
-        emb = torch.zeros((len(family_names), self.text_embedding_dim), dtype=torch.float32, device=self.device)
-        for i, family_name in enumerate(family_names):
-            text = self._family_description(family_name).lower()
-            tokens = [tok for tok in text.replace(".", " ").replace(",", " ").replace("[", " ").replace("]", " ").split() if tok]
-            if not tokens:
-                tokens = [family_name]
-            for token in tokens:
-                digest = hashlib.md5(token.encode("utf-8")).hexdigest()
-                idx = int(digest[:8], 16) % self.text_embedding_dim
-                emb[i, idx] += 1.0
-            emb[i] = emb[i] / emb[i].norm(p=2).clamp_min(1e-6)
-        return emb
+        fallback = torch.zeros(768, dtype=torch.float32, device=self.device)
+        return torch.stack([self._text_emb_cache.get(n, fallback) for n in family_names], dim=0)
 
     def _encode_batch(self, support_x: torch.Tensor, support_y: torch.Tensor, family_names: List[str]) -> tuple[torch.Tensor, torch.Tensor]:
         context_support, latent_support = self.system.encode(support_x, support_y)
