@@ -41,9 +41,36 @@ CTRL_PID=$!
 echo "PIDs: cls=$CLS_PID reg=$REG_PID bandit=$BANDIT_PID ctrl=$CTRL_PID"
 echo "Logs: runs/cls_v2.log  runs/reg_v2.log  runs/bandit_v2.log  runs/ctrl_v2.log"
 
-wait $CLS_PID && echo "[$(date)] cls DONE"  || echo "[$(date)] cls FAILED" &
-wait $REG_PID && echo "[$(date)] reg DONE"  || echo "[$(date)] reg FAILED" &
-wait $BANDIT_PID && echo "[$(date)] bandit DONE" || echo "[$(date)] bandit FAILED" &
-wait $CTRL_PID && echo "[$(date)] ctrl DONE"  || echo "[$(date)] ctrl FAILED" &
-wait
+FAIL=0
+
+if wait $CLS_PID; then
+  echo "[$(date)] cls DONE"
+else
+  echo "[$(date)] cls FAILED"
+  FAIL=1
+fi
+
+if wait $REG_PID; then
+  echo "[$(date)] reg DONE"
+else
+  echo "[$(date)] reg FAILED"
+  FAIL=1
+fi
+
+if wait $BANDIT_PID; then
+  echo "[$(date)] bandit DONE"
+else
+  echo "[$(date)] bandit FAILED"
+  FAIL=1
+fi
+
+if wait $CTRL_PID; then
+  echo "[$(date)] ctrl DONE"
+else
+  echo "[$(date)] ctrl FAILED"
+  FAIL=1
+fi
+
 echo "[$(date)] ALL DONE"
+
+exit $FAIL

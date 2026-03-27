@@ -784,7 +784,7 @@ class Experiment:
                     (std_surface[i].cpu().numpy(), "sample std", None),
                 ]
                 if gt_surfaces[i] is not None:
-                    surfaces.insert(2, (gt_surfaces[i], "ground truth", None))
+                    surfaces.insert(3, (gt_surfaces[i], "ground truth", None))
 
                 num_panels = len(surfaces)
                 if num_panels == 6:
@@ -852,11 +852,11 @@ class Experiment:
 
                         fig_r, ax_r = plt.subplots(figsize=(4.5, 2.8), constrained_layout=True)
                         ax_r.plot(rollout_data["rewards"], label="learned step", color="tab:blue", lw=0.9)
-                        ax_r.plot(rollout_data["cum_rewards"], label="learned cum", color="tab:orange", lw=0.9)
                         ax_r.plot(static_rollout["rewards"], label="static step", color="tab:red", linestyle="--", lw=0.8)
-                        ax_r.plot(static_rollout["cum_rewards"], label="static cum", color="tab:red", linestyle=":", lw=0.8)
                         ax_r.plot(baseline_rollout["rewards"], label="zero step", color="tab:green", linestyle="--", lw=0.8)
-                        ax_r.plot(baseline_rollout["cum_rewards"], label="zero cum", color="tab:green", linestyle=":", lw=0.8)
+                        ax_r.plot(rollout_data["cumulative_rewards"], label="learned cumulative", color="tab:orange", lw=0.9)
+                        ax_r.plot(static_rollout["cumulative_rewards"], label="static cumulative", color="tab:red", linestyle=":", lw=0.8)
+                        ax_r.plot(baseline_rollout["cumulative_rewards"], label="zero cumulative", color="tab:green", linestyle=":", lw=0.8)
                         ax_r.set_xlabel("time step", fontsize=7)
                         ax_r.set_ylabel("higher is better", fontsize=7)
                         ax_r.set_title(f"{prefix} reward | family={batch.family_name[i]}", fontsize=7)
@@ -942,9 +942,9 @@ class Experiment:
                 learned = family.rollout(learned_policy, initial_state, num_steps=80, dt=0.05)
                 static = family.rollout(static_policy, initial_state, num_steps=80, dt=0.05)
                 zero = family.rollout(zero_policy, initial_state, num_steps=80, dt=0.05)
-                l_final = float(learned["cum_rewards"][-1])
-                s_final = float(static["cum_rewards"][-1])
-                z_final = float(zero["cum_rewards"][-1])
+                l_final = float(learned["cumulative_rewards"][-1])
+                s_final = float(static["cumulative_rewards"][-1])
+                z_final = float(zero["cumulative_rewards"][-1])
                 rows.append({
                     "family": batch.family_name[i],
                     "delta_ls": l_final - s_final,

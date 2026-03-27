@@ -44,7 +44,7 @@ class TaskFamily:
         num_steps: int = 80,
         dt: float = 0.05,
     ) -> Dict[str, List[float]]:
-        states, actions, rewards, cum_rewards = [], [], [], []
+        states, actions, rewards, cumulative_rewards = [], [], [], []
         state = initial_state.clone().to(torch.float32)
         total = 0.0
         for _ in range(num_steps):
@@ -58,12 +58,12 @@ class TaskFamily:
             actions.append(float(action[0]))
             rewards.append(float(r))
             total += float(r)
-            cum_rewards.append(total)
+            cumulative_rewards.append(total)
         return {
             "states": states,
             "actions": actions,
             "rewards": rewards,
-            "cum_rewards": cum_rewards,
+            "cumulative_rewards": cumulative_rewards,
         }
 
 
