@@ -1,12 +1,31 @@
+\begin{table}[ht]
+\centering
+\begin{tabular}{llccccc}
+\toprule
+Task & Metric & Encoder & Diffusion & Baseline & Enc$-$Base \\
+\midrule
+  Classification & Acc. & 0.825 & 0.824 & 0.668 & 0.157 \\
+  Regression & R\textsuperscript{2} & 0.573 & 0.579 & -1.787 & 2.360 \\
+  Bandit & R\textsuperscript{2} & 0.216 & 0.216 & -2.237 & 2.452 \\
+  Control & R\textsuperscript{2} & 0.998 & 0.993 & 0.791 & 0.206 \\
+\bottomrule
+\end{tabular}
+\caption{Per-task benchmark on OOD held-out eval families. \emph{Encoder}: attention meta-learner reading support demonstrations. \emph{Diffusion}: DDIM-sampled hypernetwork (main model). \emph{Baseline}: static MLP with no support access. 1000 training steps per stage.}
+\label{tab:task_benchmark}
+\end{table}
 
-\begin{table}[h]
+\begin{table}[ht]
 \centering
 \begin{tabular}{lccccc}
 \toprule
-Method & Encoder & Diffusion & Best-of-k & Selector & Static baseline \\
+Mode & Enc R\textsuperscript{2} & Diff R\textsuperscript{2} & Base R\textsuperscript{2} & Reward Win & $\Delta$Reward \\
 \midrule
-Value & 0.998 & 0.991 & 0.998 & 0.991 & 0.891 \\
+  Support & 0.977 & 0.966 & 0.787 & 16.7\% & -5.30 \\
+  Text (DistilBERT) & 0.794 & 0.448 & 0.790 & 21.9\% & -1.61 \\
+  Hybrid & 0.974 & 0.970 & 0.787 & 12.5\% & -5.73 \\
+  Oracle & 0.886 & 0.833 & 0.794 & 1.0\% & -2.60 \\
 \bottomrule
 \end{tabular}
-\caption{Main results}
+\caption{Encoding-mode ablation on control tasks (DistilBERT embeddings, 1000 steps). \emph{Win-rate}: fraction of OOD eval episodes where the meta-learned policy out-scores the static baseline. $\Delta$Reward: mean reward improvement over static baseline.}
+\label{tab:encoding_modes}
 \end{table}

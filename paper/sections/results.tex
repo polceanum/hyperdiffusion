@@ -1,26 +1,93 @@
 \section{Results}
 
+\subsection{Per-Task Benchmark}
+
+We evaluate three models—\emph{Encoder} (attention meta-learner), \emph{Diffusion}
+(DDIM-sampled hypernetwork), and a \emph{Baseline} static MLP—against held-out (OOD)
+task families that were never seen during training.
+Table~\ref{tab:task_benchmark} and Figure~\ref{fig:task_benchmark} summarise performance
+across classification, regression, bandit, and control tasks.
+
 \input{tables/main_results}
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=0.78\linewidth]{figures/plots/task_benchmark.png}
+\caption{Per-task benchmark on OOD evaluation families (1000 training steps per stage).
+	Encoder and Diffusion models both substantially outperform the task-agnostic Baseline
+	across all four domains; Diffusion matches Encoder quality on parameter reconstruction.}
+\label{fig:task_benchmark}
+\end{figure}
+
 \paragraph{Control reward semantics.}
-For the control tasks we report cost-style reward functions (negative quadratic cost). Under this convention, more positive / less negative cumulative reward is better (i.e., lower control cost). In practical terms, performance is judged by how close step rewards stay to zero (less penalty) and how quickly cumulative reward stops decreasing.
+For control tasks we report negative quadratic cost as reward; higher (less negative)
+is better. A policy wins an episode if its cumulative reward exceeds that of the
+static baseline on the same episode.
 
-\paragraph{Train vs test (generalization).}
-Training plots show model behavior on in-distribution family sets; evaluation plots show held-out generalization performance. Prefixes in figure files (\texttt{train\_} vs \texttt{eval\_}) and suptitles make this explicit, helping readers distinguish between adaptation and transfer evaluation.
+\subsection{Encoding-Mode Ablation}
 
-\begin{figure}[h]
+Beyond using support demonstrations, the model can encode a task via its natural-language
+description (\emph{text}), a convex mixture of the two (\emph{hybrid}), or a known
+one-hot family index (\emph{oracle}).
+Figure~\ref{fig:encoding_modes} and Table~\ref{tab:encoding_modes} compare these modes
+on the control task with OOD eval families.
+
+\begin{figure}[ht]
 \centering
-\includegraphics[width=0.6\linewidth]{figures/plots/support_sweep.png}
-\caption{Support-size sweep.}
+\includegraphics[width=0.92\linewidth]{figures/plots/encoding_mode_ablation.png}
+\caption{Encoding-mode ablation on control tasks (OOD eval families).
+	\emph{Left}: R\textsuperscript{2} for parameter reconstruction---\emph{support} mode
+	wins because it has direct access to demonstrations. \emph{Right}: reward win-rate
+	versus the static baseline---all encoding modes underperform the static baseline
+	under this evaluation protocol, with \emph{text} mode performing best among meta-learned
+	modes (21.9\% win-rate) and \emph{support} close behind (16.7\%).
+	Family descriptions use semantic embeddings from DistilBERT.}
+\label{fig:encoding_modes}
 \end{figure}
 
-\begin{figure}[h]
+\paragraph{Text-mode trade-off.}
+The \emph{text} encoding still trails support mode on parameter reconstruction
+(R\textsuperscript{2}: 0.794 vs 0.977), but it outperforms the other non-support
+alternatives on reward transfer (win-rate 21.9\% vs 12.5\% for hybrid and 1.0\% for oracle).
+This suggests language descriptions encode useful high-level task intent, while lacking
+the fidelity needed for precise low-level dynamics identification.
+
+\paragraph{Protocol sensitivity.}
+Compared with the earlier short-run matrix (300-step, hashed text embedding), the final
+1000-step DistilBERT matrix changes the reward ranking substantially.
+This indicates control reward transfer is sensitive to training horizon and evaluation
+protocol details, and should be interpreted with matched seeds and repeated runs.
+
+\paragraph{Oracle collapse.}
+The \emph{oracle} mode (one-hot family index) performs poorly on reward (1\% win-rate),
+demonstrating that memorising a family label is not sufficient for generalisation.
+The model requires either actual task demonstrations or semantic task descriptions to
+produce useful fast-weights.
+
+\subsection{Adaptation to Support Size}
+
+\begin{figure}[ht]
 \centering
-\includegraphics[width=0.8\linewidth]{figures/plots/train_06_bandit_quadratic.png}
-\caption{Training example 7: Bandit quadratic task showing 2D surface with support (orange) and query (gray) points.}
+\includegraphics[width=0.55\linewidth]{figures/plots/support_sweep.png}
+\caption{Support-size sweep. Performance improves monotonically with the number of
+	support examples, confirming that the model productively integrates additional
+	task evidence. The diffusion sampler closely tracks the deterministic encoder.}
+\label{fig:support_sweep}
 \end{figure}
 
-\begin{figure}[h]
+\subsection{Qualitative Examples}
+
+\begin{figure}[ht]
 \centering
-\includegraphics[width=0.8\linewidth]{figures/plots/train_00_nonlinear_control.png}
-\caption{Training example 1: Nonlinear control task showing optimal policy surface for nonlinear dynamics (\(\dot{x} = v\), \(\dot{v} = -x - 0.1v + u + 0.1x^2\)).}
+\includegraphics[width=0.75\linewidth]{figures/plots/train_00_nonlinear_control.png}
+\caption{Nonlinear control task: predicted policy surface (encoder fast-weights) on
+	dynamics $\dot{x}=v$, $\dot{v}=-x-0.1v+u+0.1x^2$.
+	Orange: support demonstrations; gray: query set.}
+\end{figure}
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=0.75\linewidth]{figures/plots/eval_asymmetric_control_00.png}
+\caption{Asymmetric control (OOD eval family): policy surface generalised from support
+	demos on a never-seen asymmetric restoring-force task.}
 \end{figure}

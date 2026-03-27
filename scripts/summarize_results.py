@@ -149,10 +149,10 @@ def print_conclusions():
          "sampling of the latent space captures the full task-posterior rather "
          "than just the mean."),
 
-        ("C3", "Text mode: poor R², perfect reward generalization",
-         "Encoding via text description alone achieves 100% reward win-rate on "
-         "unseen eval families despite lower parameter-reconstruction R². The "
-         "induced latent is behaviourally sufficient even when numerically imprecise."),
+        ("C3", "Text mode improves semantics, not precision",
+         "Text encoding tends to lag support mode on parameter-reconstruction R², "
+         "but can still provide useful behavioural priors for control transfer. "
+         "Its reward impact is protocol-sensitive and should be validated per run."),
 
         ("C4", "Support mode wins on parameter reconstruction",
          "Attention over (x,y) pairs produces better R² than text or hybrid, "
@@ -160,8 +160,8 @@ def print_conclusions():
          "a fixed natural-language description."),
 
         ("C5", "Oracle (one-hot family index) underperforms",
-         "Oracle mode collapses in reward performance (win-rate ~28%), indicating "
-         "that memorising a family label alone is insufficient — the model needs "
+         "Oracle mode is consistently weak on reward transfer, indicating that "
+         "memorising a family label alone is insufficient — the model needs "
          "either actual demonstrations or semantic task priors to generalise."),
 
         ("C6", "Hybrid mode does not improve over support alone",
