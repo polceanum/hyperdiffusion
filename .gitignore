@@ -119,6 +119,8 @@ ipython_config.py
 
 # paper build artifacts
 /paper/*.aux
+/paper/*.bbl
+/paper/*.blg
 /paper/*.log
 /paper/*.out
 /paper/*.fls
@@ -130,6 +132,31 @@ ipython_config.py
 /paper/*.pdf
 /paper/figures/plots/*
 /paper/sections/annex.tex
+/paper/results/latest.json
+
+# local agent notes
+/COMPLETION_REPORT.md
+
+# experiment artifacts (keep selected committed summaries/aggregates only)
+/runs/**
+!/runs/classification_v2/
+/runs/classification_v2/**
+!/runs/classification_v2/summary.json
+!/runs/regression_v2/
+/runs/regression_v2/**
+!/runs/regression_v2/summary.json
+!/runs/bandit_v2/
+/runs/bandit_v2/**
+!/runs/bandit_v2/summary.json
+!/runs/control_v2/
+/runs/control_v2/**
+!/runs/control_v2/summary.json
+!/runs/control_matrix_v2_multiseed/
+/runs/control_matrix_v2_multiseed/**
+!/runs/control_matrix_v2_multiseed/aggregate.json
+
+# macOS metadata
+.DS_Store
 
 # pixi
 #   Similar to Pipfile.lock, it is generally recommended to include pixi.lock in version control.
