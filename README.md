@@ -32,8 +32,18 @@ python -m hyperdiffusion.experiment --task-type bandit_regression --output-dir r
 
 ## Paper pipeline
 
-1. `bash scripts/build_paper.sh clean` to clear artifacts
-2. `bash scripts/build_paper.sh` to generate `paper.pdf`
+Preferred modular entrypoints:
+
+1. `python -m scripts.pipeline.cli clean-paper` to clear paper artifacts
+2. `python -m scripts.pipeline.cli refresh-artifacts` to regenerate tables/plots/reports
+3. `python -m scripts.pipeline.cli build-paper` to compile `paper.pdf`
+4. `python -m scripts.pipeline.cli full-refresh` to rerun full benchmark + matrix + direct baseline + paper
+
+Legacy wrappers (still supported):
+
+1. `bash scripts/build_paper.sh clean`
+2. `bash scripts/build_paper.sh`
+3. `bash scripts/rerun_refresh_all.sh`
 
 New output stats exported to `paper/results/latest.json`:
 - `selector_acc` / `selector_r2`
