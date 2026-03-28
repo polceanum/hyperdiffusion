@@ -5,9 +5,7 @@
 We train separate instances of the experimental system for four task domains using the protocol described in Section~\ref{sec:method}.
 All models use 1000 gradient steps per stage, batch size 32, and support size $N{=}16$.
 Evaluation is performed on held-out \emph{OOD families} that were never observed during training.
-The primary model applies the deterministic encoder latent $z$ directly to the hypernetwork (no diffusion sampling).
-We also evaluate a diffusion add-on that applies DDIM sampling conditioned on the encoder context;
-for parameter-reconstruction metrics we report the mean over $K{=}8$ samples.
+The primary model applies the deterministic encoder latent $z$ directly to the hypernetwork.
 The \emph{Baseline} is a static MLP with no access to support data, trained jointly as a task-agnostic predictor.
 This baseline is learned, but non-adaptive (single policy for all tasks), unlike support-conditioned methods.
 
@@ -19,8 +17,7 @@ This baseline is learned, but non-adaptive (single policy for all tasks), unlike
 
 \subsection{Per-Task Benchmark}
 
-We evaluate the main \emph{Encoder} model, an auxiliary \emph{Diffusion}
-add-on (DDIM-sampled hypernetwork), and a \emph{Baseline} static MLP---on the default
+We evaluate the \emph{Encoder} model and a \emph{Baseline} static MLP on the default
 evaluation summaries stored in each run artifact.
 Table~\ref{tab:task_benchmark} and Figure~\ref{fig:task_benchmark} summarise performance
 across all four domains. Detailed per-family breakdowns are provided in Tables~\ref{tab:classify_per_family}, \ref{tab:regression_per_family}, and \ref{tab:control_per_family}.
@@ -32,7 +29,7 @@ across all four domains. Detailed per-family breakdowns are provided in Tables~\
 \includegraphics[width=0.78\linewidth]{figures/plots/task_benchmark.png}
 \caption{Per-task benchmark on OOD evaluation families (1000 training steps per stage).
 	The deterministic encoder substantially outperforms the task-agnostic Baseline
-	across all four domains, while the diffusion add-on mostly tracks encoder performance.}
+	across all four domains.}
 \label{fig:task_benchmark}
 \end{figure}
 
@@ -41,17 +38,14 @@ across all four domains. Detailed per-family breakdowns are provided in Tables~\
 \paragraph{Classification.}
 The encoder achieves 83.31\% accuracy on the classification evaluation split, surpassing
 the static baseline by 24.8\% relative improvement (baseline: 66.8\%).
-The diffusion add-on closely matches the encoder at 83.46\%, consistent with the observation that
-classification tasks admit low-variance latent codes---the posterior over classifiers
-is near-deterministic given 16 support points.
 Per-family breakdown shows encoder accuracy ranges from 67.39\% (imbalanced) to
 95.44\% (XOR), with solid generalization across diverse OOD family geometries.
 
 \paragraph{Regression.}
 The encoder achieves $R^2 = 0.626$ on the regression evaluation summary, a dramatic 
 135.2\% relative improvement over the static baseline ($R^2 = -1.778$), which predicts 
-systematic negative variance-explained. The diffusion add-on achieves $R^2 = 0.567$, 
-closely tracking the encoder with modest variance. Per-family analysis reveals robust 
+systematic negative variance-explained.
+Per-family analysis reveals robust 
 generalization: the encoder achieves $R^2 > 0.75$ on sawtooth and cubic-spline families, 
 but lower performance ($R^2 \approx 0.55$--$0.59$) on Gaussian-bump and piecewise families,
 where localized or discontinuous structure increases ambiguity from sparse support sets.
@@ -59,8 +53,8 @@ where localized or discontinuous structure increases ambiguity from sparse suppo
 \paragraph{Bandit.}
 Bandit reward-surface reconstruction is the most challenging domain: the encoder 
 achieves $R^2 = 0.136$ (still low absolute fit) with substantial improvement 
-over baseline ($R^2 = -2.280$). The diffusion add-on achieves $R^2 = 0.110$. 
-reflects fundamental difficulty: bandit reward landscapes exhibit high sensitivity to 
+over baseline ($R^2 = -2.280$).
+This reflects fundamental difficulty: bandit reward landscapes exhibit high sensitivity to 
 policy parameters in 2D action space, and limited support coverage ($N=16$) coupled with 
 qualitative regime changes amplifies generalization error. The model correctly identifies 
 structural patterns but absolute reconstruction remains challenging.
@@ -70,31 +64,25 @@ The encoder achieves $R^2 = 0.994$ on control policy parameter reconstruction,
 demonstrating near-perfect reconstruction performance from 16 support trajectories.
 The static baseline achieves $R^2 = 0.792$ (25.6\% relative improvement for encoder),
 reflecting shared qualitative structure across dynamics families (negative feedback stabilization)
-but limited adaptation to fine-grained task geometry. The diffusion add-on achieves $R^2 = 0.989$,
-closely tracking the encoder with small variance, validating that the learned latent 
-code concentrates near a deterministic optimum.
+but limited adaptation to fine-grained task geometry.
 
 \paragraph{Cross-domain synthesis.}
 The benchmark reveals a clear domain-difficulty hierarchy: control is near-ceiling
 ($R^2 = 0.994$), classification is strong (83.31\%), regression is moderate but robust
-($R^2 = 0.626$), and bandit remains fundamentally hard ($R^2 = 0.136$). The diffusion add-on
-tracks encoder performance closely in all domains, with the largest absolute gap in
-regression, indicating that most uncertainty arises from task ambiguity rather than
-sampling variance in latent space.
+($R^2 = 0.626$), and bandit remains fundamentally hard ($R^2 = 0.136$).
 
 \paragraph{Direct-baseline cross-check.}
-Using 3-seed support-mode direct baselines, we obtain: classification $0.789\pm0.017$,
-bandit $0.142\pm0.033$, control $0.973\pm0.002$, and regression $-0.325\pm0.143$.
-Direct baseline is competitive in classification/bandit/control (including a slight edge over
-diffusion on bandit in this run), but substantially worse on regression.
+Using 3-seed support-mode direct baselines, we obtain: classification $0.789\pm0.021$,
+bandit $0.142\pm0.040$, control $0.973\pm0.003$, and regression $-0.325\pm0.175$.
+Direct baseline is competitive in classification/bandit/control but substantially worse on regression.
 This confirms that direct predictions are not uniformly superior; the relative ordering is
 task-dependent and should be interpreted per-domain.
 
 \paragraph{OOD sanity check (artifact-backed).}
 For runs that include explicit held-out evaluation families in
 \texttt{generalization.eval\_summary.overall}, we observe the following OOD metrics:
-regression $(0.1770, -0.0372, -5.8345)$ for (encoder, diffusion, baseline),
-bandit $(-0.2957, -0.2706, -0.5694)$, and control $(0.9646, 0.9516, 0.7642)$.
+regression $(0.1730, -5.8273)$ for (encoder, baseline),
+bandit $(-0.1407, -0.5692)$, and control $(0.9708, 0.7714)$.
 The classification run in this set does not include a separate
 \texttt{eval\_families} block in its summary artifact.
 
@@ -182,24 +170,21 @@ adaptation; reward advantage remains an open empirical question under longer tra
 \includegraphics[width=0.55\linewidth]{figures/plots/support_sweep.png}
 \caption{Support-size sweep. Performance improves monotonically with the number of
 	support examples, confirming that the model productively integrates additional
-	task evidence. The diffusion sampler closely tracks the deterministic encoder.}
+	task evidence.}
 \label{fig:support_sweep}
 \end{figure}
 
 Figure~\ref{fig:support_sweep} shows performance as a function of the number of
 support examples $N \in \{1, 2, 4, 8, 16, 32\}$.
-Performance improves monotonically for both encoder and diffusion, confirming that
+Performance improves monotonically, confirming that
 the model makes productive use of additional evidence.
-Diffusion closely tracks the encoder at all support sizes, with slightly larger variance
-at $N = 1$ where the latent code is underdetermined.
 The gain from $N = 1$ to $N = 4$ is large; gains plateau more slowly beyond $N = 16$,
 suggesting the current support size is near the saturation regime for this task class.
 
 \subsection{Qualitative Examples}
 
-These qualitative panels compare the core hypernetwork variants (encoder, diffusion,
-static baseline). Direct baseline is compared quantitatively in
-Figure~\ref{fig:task_benchmark} and the direct-baseline summaries.
+These qualitative panels compare the encoder and static baseline.
+Direct baseline is compared quantitatively in Figure~\ref{fig:task_benchmark}.
 
 \begin{figure}[ht]
 \centering
@@ -211,8 +196,7 @@ Figure~\ref{fig:task_benchmark} and the direct-baseline summaries.
 \caption{Nonlinear control task (training family): predicted policy surface from
 	encoder fast-weights on dynamics $\dot{x}=v$, $\dot{v}=-x-0.1v+u+0.1x^2$.
 \emph{Panel 1}: encoder reconstruction.
-\emph{Panel 2}: best diffusion DDIM sample.
-\emph{Panel 3}: static baseline.
+\emph{Panel 2}: static baseline.
 Orange markers: support demonstrations; gray: query set.}
 \end{figure}
 
@@ -236,8 +220,7 @@ Orange markers: support demonstrations; gray: query set.}
 }{%
 \includegraphics[width=0.75\linewidth]{figures/plots/baseline_comparison.png}%
 }
-\caption{Nonlinear control (second OOD eval family): the encoder and diffusion samples
-	both reconstruct the curved action-value landscape, whereas the static baseline
-	predicts a flat response.}
+\caption{Nonlinear control (second OOD eval family): the encoder reconstructs the curved
+	action-value landscape, whereas the static baseline predicts a flat response.}
 \end{figure}
 

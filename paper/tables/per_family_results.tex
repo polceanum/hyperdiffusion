@@ -3,18 +3,18 @@
 \begin{table}[ht]
 \centering
 \caption{Per-family classification accuracy (run artifact by-family summary).}
-\begin{tabular}{lccc}
+\begin{tabular}{lcc}
 \toprule
-Family & Encoder & Diffusion & Baseline \\
+Family & Encoder & Baseline \\
 \midrule
-xor & 0.9544 & 0.9549 & 0.6009 \\
-diamond & 0.9369 & 0.9358 & 0.8627 \\
-circles & 0.9482 & 0.9496 & 0.9051 \\
-linear & 0.8838 & 0.8851 & 0.4836 \\
-sine & 0.8550 & 0.8527 & 0.4757 \\
-checkerboard & 0.5092 & 0.5134 & 0.4973 \\
-concentric\_rings & 0.5007 & 0.4993 & 0.5123 \\
-moons & 0.9925 & 0.9916 & 0.9262 \\
+  checkerboard & 0.499 & 0.500 \\
+  circles & 0.954 & 0.908 \\
+  concentric\_rings & 0.510 & 0.515 \\
+  diamond & 0.965 & 0.863 \\
+  linear & 0.729 & 0.482 \\
+  moons & 0.992 & 0.919 \\
+  sine & 0.851 & 0.484 \\
+  xor & 0.966 & 0.606 \\
 \bottomrule
 \end{tabular}
 \label{tab:classify_per_family}
@@ -23,16 +23,16 @@ moons & 0.9925 & 0.9916 & 0.9262 \\
 \begin{table}[ht]
 \centering
 \caption{Per-family regression performance ($R^2$ score, run artifact by-family summary).}
-\begin{tabular}{lccc}
+\begin{tabular}{lcc}
 \toprule
-Family & Encoder & Diffusion & Baseline \\
+Family & Encoder & Baseline \\
 \midrule
-sawtooth\_regression & 0.7507 & 0.7365 & -2.1025 \\
-piecewise\_regression & 0.9036 & 0.8998 & -0.4931 \\
-sine\_regression & 0.6978 & 0.6484 & -0.9687 \\
-damped\_sine & 0.5627 & 0.5171 & -2.3676 \\
-gaussian\_bump & 0.4816 & 0.4256 & -3.8767 \\
-quadratic\_regression & 0.8206 & 0.8006 & -0.8584 \\
+  damped\_sine & 0.631 & -2.349 \\
+  gaussian\_bump & 0.299 & -3.850 \\
+  piecewise\_regression & 0.902 & -0.496 \\
+  quadratic\_regression & 0.808 & -0.853 \\
+  sawtooth\_regression & 0.716 & -2.099 \\
+  sine\_regression & 0.686 & -0.962 \\
 \bottomrule
 \end{tabular}
 \label{tab:regression_per_family}
@@ -41,20 +41,19 @@ quadratic\_regression & 0.8206 & 0.8006 & -0.8584 \\
 \begin{table}[ht]
 \centering
 \caption{Per-family control performance ($R^2$ score, run artifact by-family summary).}
-\begin{tabular}{lccc}
+\begin{tabular}{lcc}
 \toprule
-Family & Encoder & Diffusion & Baseline \\
+Family & Encoder & Baseline \\
 \midrule
-nonlinear\_control & 0.9956 & 0.9846 & 0.5964 \\
-van\_der\_pol & 0.9971 & 0.9838 & 0.7263 \\
-linear\_control\_drift & 0.9969 & 0.9830 & 0.8971 \\
-double\_integrator & 0.9965 & 0.9897 & 0.8877 \\
-duffing\_control & 0.9973 & 0.9868 & 0.8981 \\
-overdamped\_control & 0.9980 & 0.9959 & 0.7516 \\
-linear\_control & 0.9967 & 0.9815 & 0.7203 \\
-linear\_control\_stiff & 0.9966 & 0.9878 & 0.9084 \\
+  double\_integrator & 0.996 & 0.889 \\
+  duffing\_control & 0.998 & 0.899 \\
+  linear\_control & 0.997 & 0.723 \\
+  linear\_control\_drift & 0.998 & 0.898 \\
+  linear\_control\_stiff & 0.998 & 0.909 \\
+  nonlinear\_control & 0.996 & 0.600 \\
+  overdamped\_control & 0.997 & 0.752 \\
+  van\_der\_pol & 0.997 & 0.725 \\
 \bottomrule
 \end{tabular}
 \label{tab:control_per_family}
 \end{table}
-

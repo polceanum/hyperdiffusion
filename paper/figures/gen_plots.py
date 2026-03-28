@@ -152,7 +152,7 @@ print("[gen_plots] Data loaded successfully")
 
 def plot_task_benchmark():
     """Generate per-task performance benchmark (all 4 main methods across all tasks)."""
-    enc_vals, diff_vals, base_vals, direct_vals = [], [], [], []
+    enc_vals, base_vals, direct_vals = [], [], []
     
     for task in TASKS:
         ov = task_data.get(task, {}).get("overall", {})
@@ -160,7 +160,6 @@ def plot_task_benchmark():
         suffix = "_acc" if is_acc else "_r2"
         
         enc_vals.append(ov.get(f"encoder{suffix}"))
-        diff_vals.append(ov.get(f"diffusion{suffix}"))
         base_vals.append(ov.get(f"baseline{suffix}"))
         
         # Get direct baseline mean if available
@@ -173,31 +172,27 @@ def plot_task_benchmark():
     
     x = np.arange(len(TASKS))
     has_direct = any(v is not None for v in direct_vals)
-    w = 0.20 if has_direct else 0.26
+    w = 0.26 if has_direct else 0.35
     
     fig, ax = plt.subplots(figsize=(5.5, 3.0))
     
     if has_direct:
-        ax.bar(x - 1.5 * w, [v or 0 for v in enc_vals], w, label="Encoder", 
+        ax.bar(x - w, [v or 0 for v in enc_vals], w, label="Encoder",
                color=COLORS["encoder"])
-        ax.bar(x - 0.5 * w, [v or 0 for v in diff_vals], w, label="Diffusion", 
-               color=COLORS["diffusion"])
-        ax.bar(x + 0.5 * w, [v or 0 for v in base_vals], w, label="Static Baseline", 
+        ax.bar(x, [v or 0 for v in base_vals], w, label="Static Baseline",
                color=COLORS["static_baseline"])
-        ax.bar(x + 1.5 * w, [v or 0 for v in direct_vals], w, label="Direct Baseline", 
+        ax.bar(x + w, [v or 0 for v in direct_vals], w, label="Direct Baseline",
                color=COLORS["direct_baseline"])
         
         # Add value labels for direct baseline
         for idx, v in enumerate(direct_vals):
             if v is not None:
-                ax.text(x[idx] + 1.5 * w, v + 0.03, f"{v:.3f}", ha="center", 
+                ax.text(x[idx] + w, v + 0.03, f"{v:.3f}", ha="center",
                        va="bottom", fontsize=6, color=COLORS["direct_baseline"])
     else:
-        ax.bar(x - w, [v or 0 for v in enc_vals], w, label="Encoder", 
+        ax.bar(x - 0.5 * w, [v or 0 for v in enc_vals], w, label="Encoder",
                color=COLORS["encoder"])
-        ax.bar(x, [v or 0 for v in diff_vals], w, label="Diffusion", 
-               color=COLORS["diffusion"])
-        ax.bar(x + w, [v or 0 for v in base_vals], w, label="Static Baseline", 
+        ax.bar(x + 0.5 * w, [v or 0 for v in base_vals], w, label="Static Baseline",
                color=COLORS["static_baseline"])
     
     ax.set_xticks(x)
@@ -263,30 +258,26 @@ def plot_encoding_mode_ablation():
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(7.2, 3.0))
     x = np.arange(len(modes))
     has_direct = any(v is not None for v in direct_r2s)
-    w = 0.20 if has_direct else 0.26
+    w = 0.26 if has_direct else 0.35
     
     # Left panel: R² by mode
     if has_direct:
-        ax1.bar(x - 1.5 * w, enc_r2s, w, yerr=enc_std, capsize=3, label="Encoder", 
+        ax1.bar(x - w, enc_r2s, w, yerr=enc_std, capsize=3, label="Encoder",
                color=COLORS["encoder"])
-        ax1.bar(x - 0.5 * w, diff_r2s, w, yerr=diff_std, capsize=3, label="Diffusion", 
-               color=COLORS["diffusion"])
-        ax1.bar(x + 0.5 * w, base_r2s, w, yerr=base_std, capsize=3, label="Static Baseline", 
+        ax1.bar(x, base_r2s, w, yerr=base_std, capsize=3, label="Static Baseline",
                color=COLORS["static_baseline"])
-        ax1.bar(x + 1.5 * w, [v if v is not None else np.nan for v in direct_r2s], w,
+        ax1.bar(x + w, [v if v is not None else np.nan for v in direct_r2s], w,
                 yerr=[v if v is not None else 0.0 for v in direct_std], capsize=3,
                 label="Direct Baseline", color=COLORS["direct_baseline"])
         
         for i, v in enumerate(direct_r2s):
             if v is not None:
-                ax1.text(x[i] + 1.5 * w, v + 0.02, f"{v:.3f}", ha="center", 
+                ax1.text(x[i] + w, v + 0.02, f"{v:.3f}", ha="center",
                         va="bottom", fontsize=6, color=COLORS["direct_baseline"])
     else:
-        ax1.bar(x - w, enc_r2s, w, yerr=enc_std, capsize=3, label="Encoder", 
+        ax1.bar(x - 0.5 * w, enc_r2s, w, yerr=enc_std, capsize=3, label="Encoder",
                color=COLORS["encoder"])
-        ax1.bar(x, diff_r2s, w, yerr=diff_std, capsize=3, label="Diffusion", 
-               color=COLORS["diffusion"])
-        ax1.bar(x + w, base_r2s, w, yerr=base_std, capsize=3, label="Static Baseline", 
+        ax1.bar(x + 0.5 * w, base_r2s, w, yerr=base_std, capsize=3, label="Static Baseline",
                color=COLORS["static_baseline"])
     
     ax1.set_xticks(x)
@@ -365,10 +356,8 @@ def plot_support_sweep():
     fig = plt.figure(figsize=(3.5, 2.5))
     xs = sorted(int(k) for k in sweep.keys())
     enc = [sweep[str(k)].get("encoder_r2", sweep[str(k)].get("encoder_acc")) for k in xs]
-    diff = [sweep[str(k)].get("diffusion_r2_mean", sweep[str(k)].get("diffusion_acc_mean")) for k in xs]
 
     plt.plot(xs, enc, label="encoder", marker='o', markersize=4)
-    plt.plot(xs, diff, label="diffusion", marker='s', markersize=4)
     plt.legend(fontsize=7)
     plt.xlabel("Support Size", fontsize=8)
     plt.ylabel("Metric", fontsize=8)
@@ -382,41 +371,7 @@ def plot_support_sweep():
 
 
 # ──────────────────────────────────────────────────────────
-# PLOT 4: ADAPTATION CURVE
-# ──────────────────────────────────────────────────────────
-
-def plot_adaptation_curve():
-    """Generate adaptation curve from support size sweep."""
-    support_plot_data = task_data.get("control", {}) or task_data.get("regression", {}) or {}
-    sweep = support_plot_data.get("diagnostics", {}).get("support_size_sweep", {})
-
-    if not sweep:
-        print("[gen_plots] SKIPPED adaptation_curve: no sweep data")
-        return
-
-    fig = plt.figure(figsize=(3.5, 2.5))
-    xs = sorted(int(k) for k in sweep.keys())
-    variant = "diffusion_r2_mean" if any(s.get("diffusion_r2_mean") is not None for s in sweep.values()) else "diffusion_acc_mean"
-    selected = [sweep[str(k)].get(variant) for k in xs if sweep[str(k)].get(variant) is not None]
-
-    if selected:
-        plt.plot(xs[:len(selected)], selected, marker='o', markersize=4,
-                label='diffusion mean', color=COLORS["diffusion"])
-        plt.title('Adaptation Curve (support size sweep)', fontsize=8)
-        plt.xlabel('Support size', fontsize=8)
-        plt.ylabel('Metric', fontsize=8)
-        plt.legend(fontsize=7)
-        plt.tick_params(labelsize=7)
-        fig.savefig(plots_dir / "adaptation_curve.png", dpi=90, bbox_inches='tight')
-        print("[gen_plots] wrote adaptation_curve.png")
-    else:
-        print("[gen_plots] SKIPPED adaptation_curve: no valid sweep data")
-
-    plt.close(fig)
-
-
-# ──────────────────────────────────────────────────────────
-# PLOT 5: UNCERTAINTY SUMMARY
+# PLOT 4: UNCERTAINTY SUMMARY
 # ──────────────────────────────────────────────────────────
 
 def plot_uncertainty_summary():
@@ -456,7 +411,7 @@ def plot_uncertainty_summary():
 # ──────────────────────────────────────────────────────────
 
 def plot_baseline_comparison():
-    """Generate baseline comparison (encoder vs diffusion vs selector vs static vs direct)."""
+    """Generate baseline comparison (encoder vs selector vs static vs direct)."""
     baseline_data = task_data.get("control", {})
     baseline = baseline_data.get('baseline_comparison', {})
 
@@ -467,7 +422,7 @@ def plot_baseline_comparison():
     names = []
     values = []
 
-    for key in ['deterministic_encoder', 'diffusion_sampler', 'selector', 'static_baseline']:
+    for key in ['deterministic_encoder', 'selector', 'static_baseline']:
         item = baseline.get(key)
         if item is not None:
             method_name = key.replace('_', ' ').title()
@@ -521,7 +476,6 @@ def generate_annex():
         "task_benchmark.png",
         "encoding_mode_ablation.png",
         "support_sweep.png",
-        "adaptation_curve.png",
         "uncertainty_summary.png",
         "baseline_comparison.png",
     ]
@@ -534,7 +488,7 @@ def generate_annex():
     caption_map = {
         "support_sweep.png": "Support Size Sweep: Performance vs. number of support examples",
         "adaptation_curve.png": "Adaptation Curve: Model performance across different support set sizes",
-        "baseline_comparison.png": "Baseline Comparison: encoder/diffusion/selector/static/direct baseline",
+        "baseline_comparison.png": "Baseline Comparison: encoder/selector/static/direct baseline",
         "uncertainty_summary.png": "Uncertainty Diagnostics: Summary of uncertainty metrics",
         "task_benchmark.png": "Per-Task Benchmark: Performance across classification, regression, bandit, and control tasks",
         "encoding_mode_ablation.png": "Encoding-Mode Ablation: R² and reward win-rate by encoding mode (control task)",
@@ -584,7 +538,6 @@ if __name__ == "__main__":
     plot_task_benchmark()
     plot_encoding_mode_ablation()
     plot_support_sweep()
-    plot_adaptation_curve()
     plot_uncertainty_summary()
     plot_baseline_comparison()
     generate_annex()

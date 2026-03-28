@@ -6,19 +6,16 @@ Gradient-based approaches such as MAML~\cite{finn2017model} and Reptile~\cite{ni
 In contrast, amortised meta-learning encodes adaptation as a feed-forward computation.
 Conditional neural processes~\cite{garnelo2018conditional} and neural processes with attention (ANP)~\cite{kim2019attentive} learn a Gaussian posterior over function values conditioned on a support set, but do not generate complete network weights.
 Hypernetworks~\cite{ha2016hypernetworks} directly map task representations to weight tensors; they generalise to novel tasks in a single pass but are inherently deterministic.
-Our encoder and hypernetwork decoder closely follow this deterministic amortisation paradigm, treating diffusion as an add-on that recovers distributional coverage.
+Our encoder and hypernetwork decoder closely follow this deterministic amortisation paradigm.
 
-\paragraph{Diffusion models for weight generation.}
-Diffusion probabilistic models~\cite{ho2020ddpm,song2020ddim} have been applied to generate images, audio, and molecular structures.
-Recent work has proposed generating neural network weights via diffusion~\cite{peebles2022gpt,wang2024diffusion,erkoc2023hyperdiffusion}, targeting weight distributions for ensembles, implicit neural fields, or zero-shot transfer.
-These approaches typically operate on full weight vectors; our method instead operates in a low-dimensional learned latent space, making diffusion training tractable even for modest compute budgets.
-Our setting differs from prior weight-diffusion work such as \cite{erkoc2023hyperdiffusion} by focusing on task-conditioned fast-weight generation and on comparing what kinds of task information a decoder can actually exploit.
+\paragraph{Task-conditioned weight generation.}
+Recent work explores multiple routes for generating model parameters from task context, including latent-variable formulations and amortised conditional generators.
 Closest to our setting is~\cite{schurholt2022hyper}, which uses hypernetworks to generate weights of small task-specific networks from a learned population prior; we differ by conditioning on per-episode support sets and by studying reward transfer explicitly.
 
 \paragraph{Uncertainty in meta-learning.}
 Bayesian meta-learning methods~\cite{gordon2019meta,rusu2019meta} place approximate posteriors over fast weights, typically using variational inference.
 PEARL~\cite{rakelly2019efficient} infers a latent task variable and conditions an off-policy RL agent on it.
-Our diffusion-based approach provides a non-parametric alternative that avoids specifying the posterior family and is straightforward to extend to arbitrary conditioning modalities.
+Our encoder-based approach emphasizes deterministic adaptation and explicit comparison of conditioning modalities.
 
 \paragraph{Language-conditioned policies and task descriptions.}
 Language grounding for sequential decision-making~\cite{luketina2019survey} has gained traction via pre-trained language models~\cite{devlin2018bert,liu2019roberta}.

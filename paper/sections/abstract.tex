@@ -3,12 +3,12 @@ We investigate the role of task encoding modality in weight-space meta-learning,
 A central question: what structural properties of task encoding enable decoder generalization?
 
 We compare four complementary encodings: (i)~\emph{support} (task demonstrations, rich structural information), (ii)~\emph{text} (language descriptions via DistilBERT, semantic structure), (iii)~\emph{hybrid} (50-50 mixture of both), and (iv)~\emph{oracle} (perfect task identification via one-hot family index, zero structural information).
-To make this comparison concrete, we use an encoder--hypernetwork system as the main experimental testbed, with diffusion-based sampling included only as an optional add-on.
+To make this comparison concrete, we use an encoder--hypernetwork system as the experimental testbed.
 
-Across four domains (classification, regression, bandit, control), the deterministic encoder achieves strong parameter reconstruction: 0.823 accuracy (classification), $R^2 = 0.701$ (regression), $R^2 = 0.997$ (control).
-However, a striking \emph{reconstruction--reward gap} emerges: support mode achieves near-perfect reconstruction ($R^2 = 0.969 \pm 0.006$) yet only modest deployed reward ($18.8\% \pm 3.6\%$ win-rate).
-Hybrid mode achieves the best reward ($25.7\% \pm 10.8\%$) despite lower reconstruction ($R^2 = 0.962 \pm 0.014$), showing that structural task information---not just any task information---drives generalization.
-Most notably, \emph{oracle} perfect task identification performs poorly ($6.6\% \pm 6.3\%$ win-rate), suggesting that task labels alone are insufficient.
+Across four domains (classification, regression, bandit, control), the deterministic encoder achieves strong reconstruction on the current benchmark: 0.833 accuracy (classification), $R^2 = 0.626$ (regression), $R^2 = 0.136$ (bandit), and $R^2 = 0.994$ (control).
+However, a striking \emph{reconstruction--reward gap} emerges: support mode achieves near-perfect reconstruction ($R^2 = 0.968 \pm 0.006$) yet only modest deployed reward ($25.7\% \pm 12.4\%$ win-rate).
+Hybrid mode achieves the best reward ($26.7\% \pm 5.1\%$) despite slightly lower reconstruction ($R^2 = 0.966 \pm 0.005$), showing that structural task information---not just any task information---drives generalization.
+Most notably, \emph{oracle} perfect task identification still performs weakly ($14.6\% \pm 24.4\%$ win-rate), suggesting that task labels alone are insufficient.
 This oracle collapse points to an important decoder limitation: even with perfect task identification, the decoder does not perform well without structural task information.
 Demonstrations and language provide structural features (input-output relationships, task intent, relevant variables); task index provides only categorical labels.
 \end{abstract}
