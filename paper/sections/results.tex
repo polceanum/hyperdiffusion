@@ -36,14 +36,14 @@ across all four domains. Detailed per-family breakdowns are provided in Tables~\
 \input{tables/per_family_results}
 
 \paragraph{Classification.}
-The encoder achieves 83.31\% accuracy on the classification evaluation split, surpassing
-the static baseline by 24.8\% relative improvement (baseline: 66.8\%).
+The encoder achieves 81.89\% accuracy on the classification evaluation split, surpassing
+the static baseline by 22.6\% relative improvement (baseline: 66.8\%).
 Per-family breakdown shows encoder accuracy ranges from 67.39\% (imbalanced) to
 95.44\% (XOR), with solid generalization across diverse OOD family geometries.
 
 \paragraph{Regression.}
-The encoder achieves $R^2 = 0.626$ on the regression evaluation summary, a dramatic 
-135.2\% relative improvement over the static baseline ($R^2 = -1.778$), which predicts 
+The encoder achieves $R^2 = 0.604$ on the regression evaluation summary, a
+133.8\% relative improvement over the static baseline ($R^2 = -1.786$), which predicts
 systematic negative variance-explained.
 Per-family analysis reveals robust 
 generalization: the encoder achieves $R^2 > 0.75$ on sawtooth and cubic-spline families, 
@@ -51,9 +51,9 @@ but lower performance ($R^2 \approx 0.55$--$0.59$) on Gaussian-bump and piecewis
 where localized or discontinuous structure increases ambiguity from sparse support sets.
 
 \paragraph{Bandit.}
-Bandit reward-surface reconstruction is the most challenging domain: the encoder 
-achieves $R^2 = 0.136$ (still low absolute fit) with substantial improvement 
-over baseline ($R^2 = -2.280$).
+Bandit reward-surface reconstruction is the most challenging domain: the encoder
+achieves $R^2 = 0.237$ (modest absolute fit) with substantial improvement
+over baseline ($R^2 = -2.295$).
 This reflects fundamental difficulty: bandit reward landscapes exhibit high sensitivity to 
 policy parameters in 2D action space, and limited support coverage ($N=16$) coupled with 
 qualitative regime changes amplifies generalization error. The model correctly identifies 
@@ -62,14 +62,14 @@ structural patterns but absolute reconstruction remains challenging.
 \paragraph{Control.}
 The encoder achieves $R^2 = 0.994$ on control policy parameter reconstruction, 
 demonstrating near-perfect reconstruction performance from 16 support trajectories.
-The static baseline achieves $R^2 = 0.792$ (25.6\% relative improvement for encoder),
+The static baseline achieves $R^2 = 0.790$ (25.9\% relative improvement for encoder),
 reflecting shared qualitative structure across dynamics families (negative feedback stabilization)
 but limited adaptation to fine-grained task geometry.
 
 \paragraph{Cross-domain synthesis.}
 The benchmark reveals a clear domain-difficulty hierarchy: control is near-ceiling
-($R^2 = 0.994$), classification is strong (83.31\%), regression is moderate but robust
-($R^2 = 0.626$), and bandit remains fundamentally hard ($R^2 = 0.136$).
+($R^2 = 0.994$), classification is strong (81.89\%), regression is moderate but robust
+($R^2 = 0.604$), and bandit remains challenging ($R^2 = 0.237$).
 
 \paragraph{Direct-baseline cross-check.}
 Using 3-seed support-mode direct baselines, we obtain: classification $0.789\pm0.021$,
@@ -81,8 +81,8 @@ task-dependent and should be interpreted per-domain.
 \paragraph{OOD sanity check (artifact-backed).}
 For runs that include explicit held-out evaluation families in
 \texttt{generalization.eval\_summary.overall}, we observe the following OOD metrics:
-regression $(0.1730, -5.8273)$ for (encoder, baseline),
-bandit $(-0.1407, -0.5692)$, and control $(0.9708, 0.7714)$.
+regression $(-0.8924, -5.8365)$ for (encoder, baseline),
+bandit $(-0.0380, -0.5699)$, and control $(0.9744, 0.7720)$.
 The classification run in this set does not include a separate
 \texttt{eval\_families} block in its summary artifact.
 
@@ -110,43 +110,45 @@ on the control task with OOD eval families across three independent seeds.
 wins because it has direct access to demonstrations. \emph{Right}: reward win-rate
 versus the static baseline with 3-seed error bars (mean$\pm$std), including the
 direct baseline support-mode point when available. All meta-learned
-modes remain below the static baseline in this protocol; \emph{hybrid} has the highest
-mean win-rate (26.7\%$\pm$5.1\%), followed by \emph{support} (25.7\%$\pm$12.4\%).
+modes remain below the static baseline in this protocol; \emph{text} has the highest
+mean win-rate (26.4\%$\pm$6.1\%), followed by \emph{support} (21.2\%$\pm$8.0\%).
 Family descriptions use semantic embeddings from DistilBERT.}
 \label{fig:encoding_modes}
 \end{figure}
 
 \paragraph{Reconstruction--reward gap.}
 A key empirical finding is the \emph{reconstruction--reward gap}: support mode with
-$R^2 = 0.969\pm0.006$ (near-perfect parameter recovery) achieves only
-$25.7\%\pm12.4\%$ reward win-rate, well below 50\%.
+$R^2 = 0.971\pm0.007$ (near-perfect parameter recovery) achieves only
+$21.2\%\pm8.0\%$ reward win-rate, well below 50\%.
 This indicates that accurate parameter-space reconstruction does not directly translate
 to better deployed reward: the static baseline happens to produce a reward-competitive
 policy for the OOD evaluation dynamics even though it cannot reconstruct those dynamics.
 Reward win-rate should therefore be interpreted as a question of task-specific marginal
 gain over a strong baseline, not as an absolute measure of adaptation quality.
 
-\paragraph{Text-mode trade-off.}
+\paragraph{Text-mode performance.}
 The \emph{text} encoding trails support mode on parameter reconstruction
-($R^2$: $0.812\pm0.051$ vs $0.968\pm0.006$), and also underperforms on
-reward win-rate ($4.5\%\pm4.7\%$).
-This suggests language descriptions encode useful high-level task intent (linear vs.
-non-linear dynamics, stiffness, drift direction) while lacking the fidelity needed for
-precise low-level parameter identification.
-Text-mode therefore appears insufficient as a standalone modality in this setting.
+($R^2$: $0.770\pm0.029$ vs $0.971\pm0.007$), as expected---language descriptions
+lack the instance-level fidelity of demonstrations.
+Surprisingly, however, text achieves the highest reward win-rate ($26.4\%\pm6.1\%$)
+across all encoding modes.
+This indicates that semantic abstraction from language may generalise better to deployed
+reward than precise parameter reconstruction, and suggests the two modalities carry
+complementary task information with different transfer properties.
 
 \paragraph{Hybrid mode.}
-The hybrid mode ($\alpha = 0.5$) achieves $R^2 = 0.966\pm0.005$ reconstruction,
-close to support mode, while achieving the best mean reward win-rate ($26.7\%\pm5.1\%$).
-Combining demonstration-level fidelity with language-level semantic abstraction appears
-complementary for reward transfer, suggesting the two modalities carry partially independent
-task information.
+The hybrid mode ($\alpha = 0.5$) achieves $R^2 = 0.971\pm0.002$ reconstruction,
+matching support mode, while achieving a reward win-rate of $17.7\%\pm9.1\%$.
+This is below the text-only win-rate ($26.4\%$), suggesting that mixing demonstrations
+into the text encoding dilutes---rather than augments---the semantic structure that
+benefits reward transfer.
+The reconstruction advantage of the support component does not translate to improved reward.
 
 \paragraph{Oracle collapse.}
-The \emph{oracle} mode (one-hot family index) achieves $R^2 = 0.838\pm0.036$ and
-reward win-rate $14.6\%\pm24.4\%$, with very high variance across seeds.
+The \emph{oracle} mode (one-hot family index) achieves $R^2 = 0.844\pm0.036$ and
+reward win-rate $16.7\%\pm14.3\%$, with high variance across seeds.
 This is a counter-intuitive result: knowing the exact family identity is worse for
-deployed performance than using noisy language descriptions.
+deployed performance than using language descriptions.
 We hypothesise that oracle conditioning causes the model to overfit the mean policy of
 each training family, producing weights that interpolate between training-family prototypes
 rather than adapt to the specific OOD evaluation instance.

@@ -12,12 +12,12 @@ geometry---not just model capacity---is the main determinant of OOD generalizati
 
 \paragraph{Direct baseline comparison reveals meta-learning value.}
 The static MLP baseline provides a strong sanity check on meta-learning necessity.
-On regression the baseline achieves negative $R^2$ ($-1.778$), failing to provide useful predictive structure; the encoder's advantage is clear.
-On control the baseline achieves $R^2 = 0.792$, capturing shared qualitative structure (stabilization via negative feedback) but missing task-specific geometry.
-The encoder's $+25.6\%$ improvement reflects genuine task adaptation beyond family-level prototyping.
+On regression the baseline achieves negative $R^2$ ($-1.786$), failing to provide useful predictive structure; the encoder's advantage is clear.
+On control the baseline achieves $R^2 = 0.790$, capturing shared qualitative structure (stabilization via negative feedback) but missing task-specific geometry.
+The encoder's $+25.9\%$ improvement reflects genuine task adaptation beyond family-level prototyping.
 
 \paragraph{Oracle collapse: what structural information decoders need.}
-One of the most diagnostic findings is oracle mode's poor performance: providing perfect task identification (one-hot family index) yields only $14.6\%\pm24.4\%$ win-rate.
+One of the most diagnostic findings is oracle mode's poor performance: providing perfect task identification (one-hot family index) yields only $16.7\%\pm14.3\%$ win-rate.
 
 This does not mean ``perfect encoding but failed decoding.''
 Rather, it means task identity is categorically different from task structure.
@@ -31,11 +31,11 @@ Hybrid: both structural sources.
 Oracle: family identity only.
 
 The oracle result suggests that \emph{general-purpose fast weight generation benefits from structural task information}, not just labels.
-Demonstration and text modes survive (hybrid $26.7\%$ vs oracle $14.6\%$) because they provide structural features the decoder can exploit.
+Demonstration and text modes survive (text $26.4\%$ vs oracle $16.7\%$) because they provide structural features the decoder can exploit.
 
 \paragraph{Encoding modality shapes decoder utilization.}
 Despite oracle collapse, encoding modality profoundly affects performance.
-Hybrid achieves best reward ($26.7\%\pm5.1\%$) despite slightly lower reconstruction ($R^2 = 0.966 \pm 0.005$) than support ($0.968 \pm 0.006$).
+Text achieves best reward ($26.4\%\pm6.1\%$) despite substantially lower reconstruction ($R^2 = 0.770 \pm 0.029$) than support ($0.971 \pm 0.007$).
 Encoding modality shapes which structural signals the decoder prioritizes: demonstrations enable input-output mapping; language enables task semantics.
 Yet the reconstruction--reward gap persists across all modalities, indicating an important limitation of the current decoder setup.
 No single modality closes the gap.
@@ -59,7 +59,7 @@ Reported win-rates below 50\% do not necessarily mean meta-learned policies are 
 
 \paragraph{Statistical power.}
 Encoding-mode ablations use only 3 seeds.
-Standard deviations are substantial (e.g.\ text win-rate $\pm19.9\%$), and confidence intervals for differences between modes overlap, making definitive ranking statistically fragile.
+Standard deviations are substantial (e.g.\ text win-rate $\pm6.1\%$), and confidence intervals for differences between modes overlap, making definitive ranking statistically fragile.
 
 \paragraph{Text encoder quality.}
 DistilBERT is a general-purpose language model pre-trained on Wikipedia and BooksCorpus, not on task description corpora.
@@ -81,7 +81,7 @@ This is a direct intervention to close the reconstruction--reward gap without ch
 
 \paragraph{3. More seeds and power analysis (priority: medium).}
 Increasing from 3 to 10 seeds and running a formal two-sided $t$-test (or bootstrap confidence intervals) for mode comparisons would sharpen statistical conclusions.
-At 3 seeds, the standard error on text-mode win-rate is $\pm11.5\%$, making differences non-significant.
+At 3 seeds, the standard error on text-mode win-rate is $\pm3.5\%$, making differences non-significant.
 A sample-size calculation from the observed effect sizes suggests $\geq$8 seeds are needed for 80\% power at $\alpha = 0.05$.
 
 \paragraph{4. Latent dimension and architecture sweep (priority: medium).}
@@ -113,5 +113,5 @@ This requires scaling the target network architecture, the hypernetwork, and the
 
 The main result of this paper is not the proposal of a new framework, but the empirical finding that decoder performance depends strongly on the structure of the task encoding it receives.
 Using a common encoder--hypernetwork testbed, we find that the deterministic encoder provides a strong reconstruction baseline and encoding modality matters more than categorical task identity.
-In particular, hybrid support-plus-language encoding gives the best reward transfer in our control ablation, while oracle family identity collapses despite respectable reconstruction.
+In particular, text encoding (semantic language descriptions) gives the best reward transfer in our control ablation, while oracle family identity collapses despite respectable reconstruction.
 We also identify a systematic reconstruction--reward gap and provide a prioritised roadmap of experiments for understanding and potentially closing it.
