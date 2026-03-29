@@ -177,7 +177,7 @@ def plot_task_benchmark():
     fig, ax = plt.subplots(figsize=(5.5, 3.0))
     
     if has_direct:
-        ax.bar(x - w, [v or 0 for v in enc_vals], w, label="HN-det",
+        ax.bar(x - w, [v or 0 for v in enc_vals], w, label="HN-det (ours)",
                color=COLORS["encoder"])
         ax.bar(x, [v or 0 for v in base_vals], w, label="MLP-fixed",
                color=COLORS["static_baseline"])
@@ -190,7 +190,7 @@ def plot_task_benchmark():
                 ax.text(x[idx] + w, v + 0.03, f"{v:.3f}", ha="center",
                        va="bottom", fontsize=6, color=COLORS["direct_baseline"])
     else:
-        ax.bar(x - 0.5 * w, [v or 0 for v in enc_vals], w, label="HN-det",
+        ax.bar(x - 0.5 * w, [v or 0 for v in enc_vals], w, label="HN-det (ours)",
                color=COLORS["encoder"])
         ax.bar(x + 0.5 * w, [v or 0 for v in base_vals], w, label="MLP-fixed",
                color=COLORS["static_baseline"])
@@ -262,7 +262,7 @@ def plot_encoding_mode_ablation():
     
     # Left panel: R² by mode
     if has_direct:
-        ax1.bar(x - w, enc_r2s, w, yerr=enc_std, capsize=3, label="HN-det",
+        ax1.bar(x - w, enc_r2s, w, yerr=enc_std, capsize=3, label="HN-det (ours)",
                color=COLORS["encoder"])
         ax1.bar(x, base_r2s, w, yerr=base_std, capsize=3, label="MLP-fixed",
                color=COLORS["static_baseline"])
@@ -275,7 +275,7 @@ def plot_encoding_mode_ablation():
                 ax1.text(x[i] + w, v + 0.02, f"{v:.3f}", ha="center",
                         va="bottom", fontsize=6, color=COLORS["direct_baseline"])
     else:
-        ax1.bar(x - 0.5 * w, enc_r2s, w, yerr=enc_std, capsize=3, label="HN-det",
+        ax1.bar(x - 0.5 * w, enc_r2s, w, yerr=enc_std, capsize=3, label="HN-det (ours)",
                color=COLORS["encoder"])
         ax1.bar(x + 0.5 * w, base_r2s, w, yerr=base_std, capsize=3, label="MLP-fixed",
                color=COLORS["static_baseline"])
@@ -291,7 +291,7 @@ def plot_encoding_mode_ablation():
     
     # Right panel: Reward win-rate (mode bars + direct support marker/bar when available)
     mode_colors = [COLORS.get(m, "#cccccc") for m in modes]
-    ax2.bar(mode_labels, winrates, yerr=win_std, capsize=3, color=mode_colors, label="HN-det modes")
+    ax2.bar(mode_labels, winrates, yerr=win_std, capsize=3, color=mode_colors, label="HN-det modes (ours)")
 
     direct_support_reward = (direct_baseline_multiseed.get("control", {}).get("support") or {}).get("reward_winrate_mean")
     direct_support_reward_std = (direct_baseline_multiseed.get("control", {}).get("support") or {}).get("reward_winrate_std")
@@ -357,7 +357,7 @@ def plot_support_sweep():
     xs = sorted(int(k) for k in sweep.keys())
     enc = [sweep[str(k)].get("encoder_r2", sweep[str(k)].get("encoder_acc")) for k in xs]
 
-    plt.plot(xs, enc, label="HN-det", marker='o', markersize=4)
+    plt.plot(xs, enc, label="HN-det (ours)", marker='o', markersize=4)
     plt.legend(fontsize=7)
     plt.xlabel("Support Size", fontsize=8)
     plt.ylabel("Metric", fontsize=8)
