@@ -65,12 +65,12 @@ def main():
         print(f"\n{task}")
         print(f"  source: {path}")
         print(f"  split config: train={len(fam)} eval={len(eval_fam)}")
-        print(f"  main metrics: fw_det={m['encoder']:.4f} fw_diff={m['diffusion']:.4f} baseline={m['baseline']:.4f}")
+        print(f"  main metrics: fw_det={m['encoder']:.4f} fw_diff={m['diffusion']:.4f} no_adapt={m['baseline']:.4f}")
         ood = get_ood_metrics(task, data)
         if ood is None:
             print("  ood metrics: not present in this summary")
         else:
-            print(f"  ood metrics:  fw_det={ood['encoder']:.4f} fw_diff={ood['diffusion']:.4f} baseline={ood['baseline']:.4f}")
+            print(f"  ood metrics:  fw_det={ood['encoder']:.4f} fw_diff={ood['diffusion']:.4f} no_adapt={ood['baseline']:.4f}")
 
 
 if __name__ == "__main__":

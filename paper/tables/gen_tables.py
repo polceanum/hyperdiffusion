@@ -70,15 +70,15 @@ def gen_task_benchmark_table():
         "\\centering",
         "\\begin{tabular}{llcccc}",
         "\\toprule",
-        "Task & Metric & FW (det.) & Baseline & FW Gain \\\\",
+        "Task & Metric & FW (det.) & No-adapt MLP & FW Gain \\\\",
         "\\midrule",
         body,
         "\\bottomrule",
         "\\end{tabular}",
         "\\caption{Per-task benchmark from run-level \\texttt{overall} summaries (v2 results, 1000 training steps per stage). "
         "\\emph{FW (det.)}: fast-weights hypernetwork, deterministic attention over support set (no sampling). "
-        "\\emph{Baseline}: static MLP with no per-task adaptation. "
-        "FW Gain shows relative improvement of FW (det.) over Baseline.}",
+        "\\emph{No-adapt MLP}: task-agnostic learned MLP, no support conditioning at test time. "
+        "FW Gain shows relative improvement of FW (det.) over No-adapt MLP.}",
         "\\label{tab:task_benchmark}",
         "\\end{table}",
         "",
@@ -153,15 +153,15 @@ def gen_encoding_mode_table():
         "\\centering",
         "\\begin{tabular}{lcccc}",
         "\\toprule",
-        "Mode & FW(det.) R\\textsuperscript{2} & Base R\\textsuperscript{2} & Reward Win & $\\Delta$Reward \\\\",
+        "Mode & FW(det.) R\\textsuperscript{2} & No-adapt R\\textsuperscript{2} & Reward Win & $\\Delta$Reward \\\\",
         "\\midrule",
         body,
         "\\bottomrule",
         "\\end{tabular}",
         "\\caption{Encoding-mode ablation on control tasks " + note + ". "
         "\\emph{Win-rate}: fraction of OOD eval episodes where the meta-learned "
-        "policy out-scores the static baseline. "
-        "$\\Delta$Reward: mean reward improvement over static baseline.}",
+        "policy out-scores the No-adapt MLP. "
+        "$\\Delta$Reward: mean reward improvement over No-adapt MLP.}",
         "\\label{tab:encoding_modes}",
         "\\end{table}",
         "",
@@ -195,7 +195,7 @@ def gen_per_family_table(task: str, caption: str, metric_key: str, label: str, f
         f"\\caption{{{caption}}}",
         "\\begin{tabular}{lcc}",
         "\\toprule",
-        "Family & FW (det.) & Baseline \\\\",
+        "Family & FW (det.) & No-adapt MLP \\\\",
         "\\midrule",
         body,
         "\\bottomrule",

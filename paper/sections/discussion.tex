@@ -7,14 +7,14 @@ Our investigation highlights several consistent patterns across task domains and
 \paragraph{Strong domain-dependent effects.}
 The four domains separate into a consistent difficulty hierarchy: control near ceiling,
 classification strong, regression moderate, and bandit hardest.
-This pattern is stable across encoder-centered analyses and indicates that task
+This pattern is stable across FW (det.) analyses and indicates that task
 geometry---not just model capacity---is the main determinant of OOD generalization quality.
 
 \paragraph{Direct baseline comparison reveals meta-learning value.}
-The static MLP baseline provides a strong sanity check on meta-learning necessity.
-On regression the baseline achieves negative $R^2$ ($-1.786$), failing to provide useful predictive structure; the encoder's advantage is clear.
-On control the baseline achieves $R^2 = 0.790$, capturing shared qualitative structure (stabilization via negative feedback) but missing task-specific geometry.
-The encoder's $+25.9\%$ improvement reflects genuine task adaptation beyond family-level prototyping.
+The No-adapt MLP provides a strong sanity check on meta-learning necessity.
+On regression it achieves negative $R^2$ ($-1.786$), failing to provide useful predictive structure; FW (det.)'s advantage is clear.
+On control the No-adapt MLP achieves $R^2 = 0.790$, capturing shared qualitative structure (stabilization via negative feedback) but missing task-specific geometry.
+FW (det.)'s $+25.9\%$ improvement reflects genuine task adaptation beyond family-level prototyping.
 
 \paragraph{Oracle collapse: what structural information decoders need.}
 One of the most diagnostic findings is oracle mode's poor performance: providing perfect task identification (one-hot family index) yields only $16.7\%\pm14.3\%$ win-rate.
@@ -53,8 +53,8 @@ Target networks are small (13K parameters, 2-dimensional input), latent codes ar
 Transferring findings to higher-dimensional tasks (e.g.\ image-based tasks, high-DoF robotics) requires significant architectural scaling.
 
 \paragraph{Reward evaluation protocol.}
-The reward win-rate metric is sensitive to the strength of the static baseline comparator.
-In our protocol, the static baseline is a well-tuned task-agnostic MLP; a weaker comparator would inflate win-rates for all modes.
+The reward win-rate metric is sensitive to the strength of the No-adapt MLP comparator.
+In our protocol, the No-adapt MLP is a well-tuned task-agnostic learned policy; a weaker comparator would inflate win-rates for all modes.
 Reported win-rates below 50\% do not necessarily mean meta-learned policies are \emph{poor}---they may still achieve strong absolute reward while the comparator is unusually strong.
 
 \paragraph{Statistical power.}
@@ -112,6 +112,6 @@ This requires scaling the target network architecture, the hypernetwork, and the
 \subsection{Conclusion}
 
 The main result of this paper is not the proposal of a new framework, but the empirical finding that decoder performance depends strongly on the structure of the task encoding it receives.
-Using a common encoder--hypernetwork testbed, we find that the deterministic encoder provides a strong reconstruction baseline and encoding modality matters more than categorical task identity.
+Using a common encoder--hypernetwork testbed, we find that FW (det.) provides a strong reconstruction reference and encoding modality matters more than categorical task identity.
 In particular, text encoding (semantic language descriptions) gives the best reward transfer in our control ablation, while oracle family identity collapses despite respectable reconstruction.
 We also identify a systematic reconstruction--reward gap and provide a prioritised roadmap of experiments for understanding and potentially closing it.

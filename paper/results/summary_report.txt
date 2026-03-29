@@ -2,7 +2,7 @@
 ====================================================================
   SECTION 1 — Per-Task Benchmark  (runs/*_v2, encoding_mode=support)
 ====================================================================
-  Task               Metric   FW(det.)  FW(diff.)   Baseline    FW-Base
+  Task               Metric   FW(det.)  FW(diff.)   No-adapt      FW-NA
   ----------------------------------------------------------------
   classification     acc         0.809      0.809      0.665      0.144
   regression         r2          0.670      0.644     -1.782      2.452
@@ -11,6 +11,7 @@
 
   FW (det.) = fast weights via deterministic attention over support set (no sampling).
   FW (diff.) = fast weights via DDIM sampling of latent space (main model).
+  No-adapt MLP = task-agnostic learned MLP; no support conditioning at test time.
   Baseline = static MLP, no support set (task-agnostic lower bound).
 
 ====================================================================
@@ -27,7 +28,7 @@
   SECTION 2c — Encoding-Mode Ablation  [DistilBERT, 3 seeds]
 ====================================================================
   Aggregated over 3 seeds (mean ± std)
-  Mode                    Enc R²             Diff R²             Base R²         Rew WinRate           ΔReward
+  Mode                  FW(d) R²            FW(s) R²               NA R²         Rew WinRate           ΔReward
   ----------------------------------------------------------------------------------------------------------------------------------
   support            0.973±0.001         0.962±0.005         0.816±0.029          22.2%±9.4%        -6.01±0.58
   text               0.813±0.044         0.731±0.161         0.815±0.031         12.2%±21.0%        -3.96±1.21
@@ -39,7 +40,7 @@
 ====================================================================
 
   [C1] Meta-learning beats task-agnostic baseline across all tasks
-       FW (det.) and FW (diff.) consistently outperform the static
+       FW (det.) and FW (diff.) consistently outperform the No-adapt
        MLP on classification (acc), regression, bandit, and control
        (R²).
 
