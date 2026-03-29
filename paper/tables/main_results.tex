@@ -2,7 +2,7 @@
 \centering
 \begin{tabular}{llcccc}
 \toprule
-Task & Metric & FW (det.) & No-adapt MLP & FW Gain \\
+Task & Metric & HN-det & MLP-fixed & HN-gain \\
 \midrule
   Classification & Acc. & 0.823 & 0.668 & +23.2\% \\
   Regression & R\textsuperscript{2} & 0.603 & -1.781 & +133.8\% \\
@@ -10,7 +10,7 @@ Task & Metric & FW (det.) & No-adapt MLP & FW Gain \\
   Control & R\textsuperscript{2} & 0.983 & 0.794 & +23.8\% \\
 \bottomrule
 \end{tabular}
-\caption{Per-task benchmark from run-level \texttt{overall} summaries (v2 results, 1000 training steps per stage). \emph{FW (det.)}: fast-weights hypernetwork, deterministic attention over support set (no sampling). \emph{No-adapt MLP}: task-agnostic learned MLP, no support conditioning at test time. FW Gain shows relative improvement of FW (det.) over No-adapt MLP.}
+\caption{Per-task benchmark from run-level \texttt{overall} summaries (v2 results, 1000 training steps per stage). \emph{HN-det}: fast-weights hypernetwork, deterministic attention over support set (no sampling). \emph{MLP-fixed}: task-agnostic MLP, no support conditioning at test time. HN-gain shows relative improvement of HN-det over MLP-fixed.}
 \label{tab:task_benchmark}
 \end{table}
 
@@ -18,7 +18,7 @@ Task & Metric & FW (det.) & No-adapt MLP & FW Gain \\
 \centering
 \begin{tabular}{lcccc}
 \toprule
-Mode & FW(det.) R\textsuperscript{2} & No-adapt R\textsuperscript{2} & Reward Win & $\Delta$Reward \\
+Mode & HN-det R\textsuperscript{2} & MLP-fixed R\textsuperscript{2} & Reward Win & $\Delta$Reward \\
 \midrule
   Support & 0.970 $\pm$ 0.004 & 0.818 $\pm$ 0.032 & 26.0\% $\pm$ 13.6\% & -4.99 $\pm$ 1.39 \\
   Text (DistilBERT) & 0.817 $\pm$ 0.048 & 0.817 $\pm$ 0.035 & 15.6\% $\pm$ 14.0\% & -4.01 $\pm$ 0.54 \\
@@ -26,6 +26,6 @@ Mode & FW(det.) R\textsuperscript{2} & No-adapt R\textsuperscript{2} & Reward Wi
   Oracle & 0.859 $\pm$ 0.011 & 0.816 $\pm$ 0.033 & 1.0\% $\pm$ 1.0\% & -2.71 $\pm$ 0.53 \\
 \bottomrule
 \end{tabular}
-\caption{Encoding-mode ablation on control tasks (DistilBERT embeddings, 1000 steps, 3 seeds; mean$\pm$std). \emph{Win-rate}: fraction of OOD eval episodes where the meta-learned policy out-scores the No-adapt MLP. $\Delta$Reward: mean reward improvement over No-adapt MLP.}
+\caption{Encoding-mode ablation on control tasks (DistilBERT embeddings, 1000 steps, 3 seeds; mean$\pm$std). \emph{Win-rate}: fraction of OOD eval episodes where the meta-learned policy out-scores MLP-fixed. $\Delta$Reward: mean reward improvement over MLP-fixed.}
 \label{tab:encoding_modes}
 \end{table}

@@ -52,15 +52,15 @@ At meta-test time, given support set $S$, we:
   \item Use the deterministic encoder latent $z$ to decode target weights.
   \item Evaluate the resulting target networks on held-out query data.
 \end{enumerate}
-The FW (det.) path is the primary model in the paper.
+The HN-det path is the primary model in the paper.
 
 \paragraph{Two baselines, two questions.}
 We include two complementary baselines that measure different things.
 
-The \emph{No-adapt MLP} is a task-agnostic MLP trained on raw inputs $(x \to y)$ across all tasks; it never sees the support set at test time and applies the same weights to every episode.
-Comparing FW (det.) to the No-adapt MLP answers: \emph{is per-episode adaptation worth anything at all?}
+The \emph{MLP-fixed} is a task-agnostic MLP trained on raw inputs $(x \to y)$ across all tasks; it never sees the support set at test time and applies the same weights to every episode.
+Comparing HN-det to MLP-fixed answers: \emph{is per-episode adaptation worth anything at all?}
 
-The \emph{Direct (no FW)} model uses the same attention set encoder as FW (det.) to produce a support-conditioned context vector, but instead of passing that context through a hypernetwork to generate target weights, it concatenates the context directly to each query input and predicts outputs with a lightweight MLP head---no network weights are generated.
-Comparing FW (det.) to Direct (no FW) answers: \emph{does the weight-generation step add value over support-conditioned direct prediction?}
+The \emph{MLP-adapt} model uses the same attention set encoder as HN-det to produce a support-conditioned context vector, but instead of passing that context through a hypernetwork to generate target weights, it concatenates the context directly to each query input and predicts outputs with a lightweight MLP head---no network weights are generated.
+Comparing HN-det to MLP-adapt answers: \emph{does the weight-generation step add value over support-conditioned direct prediction?}
 
-Both FW (det.) and Direct (no FW) are \emph{adaptive} (they condition on the support set at test time); the No-adapt MLP is \emph{non-adaptive}.
+Both HN-det and MLP-adapt are \emph{adaptive} (they condition on the support set at test time); MLP-fixed is \emph{non-adaptive}.

@@ -74,7 +74,7 @@ def print_task_benchmark():
     print("=" * 68)
     print("  SECTION 1 — Per-Task Benchmark  (runs/*_v2, encoding_mode=support)")
     print("=" * 68)
-    print(f"  {'Task':<18} {'Metric':<6}  {'FW(det.)':>9}  {'FW(diff.)':>9}  {'No-adapt':>9}  {'FW-NA':>9}")
+    print(f"  {'Task':<18} {'Metric':<6}  {'HN-det':>9}  {'HN-diff':>9}  {'MLP-fixed':>9}  {'HN-gain':>9}")
     print("  " + "-" * 64)
     for task, metric, enc, diff, base in rows:
         gap = (enc - base) if (enc is not None and base is not None) else None
@@ -83,10 +83,10 @@ def print_task_benchmark():
             f"{fmt(enc):>9}  {fmt(diff):>9}  {fmt(base):>9}  {fmt(gap):>9}"
         )
     print()
-    print("  FW (det.) = fast weights via deterministic attention over support set (no sampling).")
-    print("  FW (diff.) = fast weights via DDIM sampling of latent space (main model).")
-    print("  No-adapt MLP = task-agnostic learned MLP; no support conditioning at test time.")
-    print("  Baseline = static MLP, no support set (task-agnostic lower bound).")
+    print("  HN-det    = fast weights via deterministic attention over support set (no sampling).")
+    print("  HN-diff   = fast weights via DDIM sampling of latent space (main model).")
+    print("  MLP-fixed = task-agnostic MLP across all tasks; no support set at test time (non-adaptive).")
+    print("  HN-gain   = relative improvement of HN-det over MLP-fixed.")
     print()
 
 
@@ -112,7 +112,7 @@ def print_matrix_section(title, matrix_dir, note=None):
         print()
         return
 
-    header = f"  {'Mode':<10}  {'FW(d) R²':>8}  {'FW(s) R²':>8}  {'NA R²':>8}  {'Rew WinRate':>12}  {'ΔReward':>9}"
+    header = f"  {'Mode':<10}  {'HN-det R²':>10}  {'HN-diff R²':>11}  {'MLP-fixed R²':>13}  {'Rew WinRate':>12}  {'ΔReward':>9}"
     print(header)
     print("  " + "-" * 64)
     for row in rows:
@@ -151,7 +151,7 @@ def print_multiseed_section():
     rows = data.get("summary_table", [])
     n = data.get("num_seeds", "?")
     print(f"  Aggregated over {n} seeds (mean ± std)")
-    print(f"  {'Mode':<10}  {'FW(d) R²':>18}  {'FW(s) R²':>18}  {'NA R²':>18}  {'Rew WinRate':>18}  {'ΔReward':>16}")
+    print(f"  {'Mode':<10}  {'HN-det R²':>18}  {'HN-diff R²':>18}  {'MLP-fixed R²':>18}  {'Rew WinRate':>18}  {'ΔReward':>16}")
     print("  " + "-" * 130)
     for row in rows:
         mode = row.get("encoding_mode", "?")
@@ -182,11 +182,11 @@ def print_conclusions():
 
     conclusions = [
         ("C1", "Meta-learning beats task-agnostic baseline across all tasks",
-         "FW (det.) and FW (diff.) consistently outperform the No-adapt MLP on "
-         "classification (acc), regression, bandit, and control (R²)."),
+         "HN-det and HN-diff consistently outperform MLP-fixed on "
+         "classification (acc), regression, bandit, and control (R\u00b2)."),
 
-        ("C2", "FW (diff.) ≈ FW (det.) in R²",
-         "FW (diff.) matches FW (det.) quality on most tasks, showing DDIM "
+        ("C2", "HN-diff \u2248 HN-det in R\u00b2",
+         "HN-diff matches HN-det quality on most tasks, showing DDIM "
          "sampling of the latent space captures the full task-posterior rather "
          "than just the mean."),
 

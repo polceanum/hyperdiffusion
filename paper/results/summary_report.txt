@@ -2,17 +2,17 @@
 ====================================================================
   SECTION 1 — Per-Task Benchmark  (runs/*_v2, encoding_mode=support)
 ====================================================================
-  Task               Metric   FW(det.)  FW(diff.)   No-adapt      FW-NA
+  Task               Metric     HN-det    HN-diff  MLP-fixed    HN-gain
   ----------------------------------------------------------------
   classification     acc         0.823      0.819      0.668      0.155
   regression         r2          0.603      0.583     -1.781      2.383
   bandit             r2          0.227      0.214     -2.256      2.482
   control            r2          0.983      0.986      0.794      0.189
 
-  FW (det.) = fast weights via deterministic attention over support set (no sampling).
-  FW (diff.) = fast weights via DDIM sampling of latent space (main model).
-  No-adapt MLP = task-agnostic learned MLP; no support conditioning at test time.
-  Baseline = static MLP, no support set (task-agnostic lower bound).
+  HN-det    = fast weights via deterministic attention over support set (no sampling).
+  HN-diff   = fast weights via DDIM sampling of latent space (main model).
+  MLP-fixed = task-agnostic MLP across all tasks; no support set at test time (non-adaptive).
+  HN-gain   = relative improvement of HN-det over MLP-fixed.
 
 ====================================================================
   SECTION 2a — Encoding-Mode Ablation  [hashed BOW text, 300 steps]
@@ -28,7 +28,7 @@
   SECTION 2c — Encoding-Mode Ablation  [DistilBERT, 3 seeds]
 ====================================================================
   Aggregated over 3 seeds (mean ± std)
-  Mode                  FW(d) R²            FW(s) R²               NA R²         Rew WinRate           ΔReward
+  Mode                 HN-det R²          HN-diff R²        MLP-fixed R²         Rew WinRate           ΔReward
   ----------------------------------------------------------------------------------------------------------------------------------
   support            0.970±0.004         0.949±0.015         0.818±0.032         26.0%±13.6%        -4.99±1.39
   text               0.817±0.048         0.619±0.230         0.817±0.035         15.6%±14.0%        -4.01±0.54
@@ -40,14 +40,13 @@
 ====================================================================
 
   [C1] Meta-learning beats task-agnostic baseline across all tasks
-       FW (det.) and FW (diff.) consistently outperform the No-adapt
-       MLP on classification (acc), regression, bandit, and control
-       (R²).
+       HN-det and HN-diff consistently outperform MLP-fixed on
+       classification (acc), regression, bandit, and control (R²).
 
-  [C2] FW (diff.) ≈ FW (det.) in R²
-       FW (diff.) matches FW (det.) quality on most tasks, showing
-       DDIM sampling of the latent space captures the full
-       task-posterior rather than just the mean.
+  [C2] HN-diff ≈ HN-det in R²
+       HN-diff matches HN-det quality on most tasks, showing DDIM
+       sampling of the latent space captures the full task-posterior
+       rather than just the mean.
 
   [C3] Text mode improves semantics, not precision
        Text encoding lags support/hybrid on reconstruction R² but

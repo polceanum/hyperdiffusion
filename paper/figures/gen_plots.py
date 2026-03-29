@@ -177,11 +177,11 @@ def plot_task_benchmark():
     fig, ax = plt.subplots(figsize=(5.5, 3.0))
     
     if has_direct:
-        ax.bar(x - w, [v or 0 for v in enc_vals], w, label="FW (det.)",
+        ax.bar(x - w, [v or 0 for v in enc_vals], w, label="HN-det",
                color=COLORS["encoder"])
-        ax.bar(x, [v or 0 for v in base_vals], w, label="No-adapt MLP",
+        ax.bar(x, [v or 0 for v in base_vals], w, label="MLP-fixed",
                color=COLORS["static_baseline"])
-        ax.bar(x + w, [v or 0 for v in direct_vals], w, label="Direct (no FW)",
+        ax.bar(x + w, [v or 0 for v in direct_vals], w, label="MLP-adapt",
                color=COLORS["direct_baseline"])
         
         # Add value labels for direct baseline
@@ -190,9 +190,9 @@ def plot_task_benchmark():
                 ax.text(x[idx] + w, v + 0.03, f"{v:.3f}", ha="center",
                        va="bottom", fontsize=6, color=COLORS["direct_baseline"])
     else:
-        ax.bar(x - 0.5 * w, [v or 0 for v in enc_vals], w, label="FW (det.)",
+        ax.bar(x - 0.5 * w, [v or 0 for v in enc_vals], w, label="HN-det",
                color=COLORS["encoder"])
-        ax.bar(x + 0.5 * w, [v or 0 for v in base_vals], w, label="No-adapt MLP",
+        ax.bar(x + 0.5 * w, [v or 0 for v in base_vals], w, label="MLP-fixed",
                color=COLORS["static_baseline"])
     
     ax.set_xticks(x)
@@ -262,22 +262,22 @@ def plot_encoding_mode_ablation():
     
     # Left panel: R² by mode
     if has_direct:
-        ax1.bar(x - w, enc_r2s, w, yerr=enc_std, capsize=3, label="FW (det.)",
+        ax1.bar(x - w, enc_r2s, w, yerr=enc_std, capsize=3, label="HN-det",
                color=COLORS["encoder"])
-        ax1.bar(x, base_r2s, w, yerr=base_std, capsize=3, label="No-adapt MLP",
+        ax1.bar(x, base_r2s, w, yerr=base_std, capsize=3, label="MLP-fixed",
                color=COLORS["static_baseline"])
         ax1.bar(x + w, [v if v is not None else np.nan for v in direct_r2s], w,
                 yerr=[v if v is not None else 0.0 for v in direct_std], capsize=3,
-                label="Direct (no FW)", color=COLORS["direct_baseline"])
+                label="MLP-adapt", color=COLORS["direct_baseline"])
         
         for i, v in enumerate(direct_r2s):
             if v is not None:
                 ax1.text(x[i] + w, v + 0.02, f"{v:.3f}", ha="center",
                         va="bottom", fontsize=6, color=COLORS["direct_baseline"])
     else:
-        ax1.bar(x - 0.5 * w, enc_r2s, w, yerr=enc_std, capsize=3, label="FW (det.)",
+        ax1.bar(x - 0.5 * w, enc_r2s, w, yerr=enc_std, capsize=3, label="HN-det",
                color=COLORS["encoder"])
-        ax1.bar(x + 0.5 * w, base_r2s, w, yerr=base_std, capsize=3, label="No-adapt MLP",
+        ax1.bar(x + 0.5 * w, base_r2s, w, yerr=base_std, capsize=3, label="MLP-fixed",
                color=COLORS["static_baseline"])
     
     ax1.set_xticks(x)
@@ -291,7 +291,7 @@ def plot_encoding_mode_ablation():
     
     # Right panel: Reward win-rate (mode bars + direct support marker/bar when available)
     mode_colors = [COLORS.get(m, "#cccccc") for m in modes]
-    ax2.bar(mode_labels, winrates, yerr=win_std, capsize=3, color=mode_colors, label="FW (det.) modes")
+    ax2.bar(mode_labels, winrates, yerr=win_std, capsize=3, color=mode_colors, label="HN-det modes")
 
     direct_support_reward = (direct_baseline_multiseed.get("control", {}).get("support") or {}).get("reward_winrate_mean")
     direct_support_reward_std = (direct_baseline_multiseed.get("control", {}).get("support") or {}).get("reward_winrate_std")
@@ -303,7 +303,7 @@ def plot_encoding_mode_ablation():
             yerr=[direct_support_reward_std if direct_support_reward_std is not None else 0.0],
             capsize=3,
             color=COLORS["direct_baseline"],
-            label="Direct (no FW)",
+            label="MLP-adapt",
         )
         labels = mode_labels + ["Direct\n(support)"]
         ax2.set_xticks(np.arange(len(labels)))
@@ -357,7 +357,7 @@ def plot_support_sweep():
     xs = sorted(int(k) for k in sweep.keys())
     enc = [sweep[str(k)].get("encoder_r2", sweep[str(k)].get("encoder_acc")) for k in xs]
 
-    plt.plot(xs, enc, label="FW (det.)", marker='o', markersize=4)
+    plt.plot(xs, enc, label="HN-det", marker='o', markersize=4)
     plt.legend(fontsize=7)
     plt.xlabel("Support Size", fontsize=8)
     plt.ylabel("Metric", fontsize=8)
@@ -423,8 +423,8 @@ def plot_baseline_comparison():
     values = []
 
     _name_map = {
-        'deterministic_encoder': 'FW (det.)',
-        'static_baseline': 'No-adapt MLP',
+        'deterministic_encoder': 'HN-det',
+        'static_baseline': 'MLP-fixed',
         'selector': 'Selector',
     }
     for key in ['deterministic_encoder', 'selector', 'static_baseline']:
@@ -438,22 +438,22 @@ def plot_baseline_comparison():
 
     direct_support = (direct_baseline_multiseed.get("control", {}).get("support") or {}).get("direct_mean")
     if direct_support is not None:
-        names.append("Direct (no FW)")
+        names.append("MLP-adapt")
         values.append(direct_support)
 
     if values:
         fig = plt.figure(figsize=(3.5, 2.5))
         colors = []
         for name in names:
-            if "Deterministic" in name or "FW" in name:
+            if "HN-det" in name:
                 colors.append(COLORS["encoder"])
-            elif "Diffusion" in name:
+            elif "HN-diff" in name:
                 colors.append(COLORS["diffusion"])
             elif "Selector" in name:
                 colors.append("#999999")
-            elif "Static" in name or "No-adapt" in name:
+            elif "MLP-fixed" in name:
                 colors.append(COLORS["static_baseline"])
-            elif "Direct" in name:
+            elif "MLP-adapt" in name:
                 colors.append(COLORS["direct_baseline"])
             else:
                 colors.append("#cccccc")
@@ -493,7 +493,7 @@ def generate_annex():
     caption_map = {
         "support_sweep.png": "Support Size Sweep: Performance vs. number of support examples",
         "adaptation_curve.png": "Adaptation Curve: Model performance across different support set sizes",
-        "baseline_comparison.png": "Baseline Comparison: FW (det.) / selector / No-adapt MLP / Direct (no FW)",
+        "baseline_comparison.png": "Baseline Comparison: HN-det / selector / MLP-fixed / MLP-adapt",
         "uncertainty_summary.png": "Uncertainty Diagnostics: Summary of uncertainty metrics",
         "task_benchmark.png": "Per-Task Benchmark: Performance across classification, regression, bandit, and control tasks",
         "encoding_mode_ablation.png": "Encoding-Mode Ablation: R² and reward win-rate by encoding mode (control task)",

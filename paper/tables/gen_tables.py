@@ -70,15 +70,15 @@ def gen_task_benchmark_table():
         "\\centering",
         "\\begin{tabular}{llcccc}",
         "\\toprule",
-        "Task & Metric & FW (det.) & No-adapt MLP & FW Gain \\\\",
+        "Task & Metric & HN-det & MLP-fixed & HN-gain \\\\",
         "\\midrule",
         body,
         "\\bottomrule",
         "\\end{tabular}",
         "\\caption{Per-task benchmark from run-level \\texttt{overall} summaries (v2 results, 1000 training steps per stage). "
-        "\\emph{FW (det.)}: fast-weights hypernetwork, deterministic attention over support set (no sampling). "
-        "\\emph{No-adapt MLP}: task-agnostic learned MLP, no support conditioning at test time. "
-        "FW Gain shows relative improvement of FW (det.) over No-adapt MLP.}",
+        "\\emph{HN-det}: fast-weights hypernetwork, deterministic attention over support set (no sampling). "
+        "\\emph{MLP-fixed}: task-agnostic MLP, no support conditioning at test time. "
+        "HN-gain shows relative improvement of HN-det over MLP-fixed.}",
         "\\label{tab:task_benchmark}",
         "\\end{table}",
         "",
@@ -153,15 +153,15 @@ def gen_encoding_mode_table():
         "\\centering",
         "\\begin{tabular}{lcccc}",
         "\\toprule",
-        "Mode & FW(det.) R\\textsuperscript{2} & No-adapt R\\textsuperscript{2} & Reward Win & $\\Delta$Reward \\\\",
+        "Mode & HN-det R\\textsuperscript{2} & MLP-fixed R\\textsuperscript{2} & Reward Win & $\\Delta$Reward \\\\",
         "\\midrule",
         body,
         "\\bottomrule",
         "\\end{tabular}",
         "\\caption{Encoding-mode ablation on control tasks " + note + ". "
         "\\emph{Win-rate}: fraction of OOD eval episodes where the meta-learned "
-        "policy out-scores the No-adapt MLP. "
-        "$\\Delta$Reward: mean reward improvement over No-adapt MLP.}",
+        "policy out-scores MLP-fixed. "
+        "$\\Delta$Reward: mean reward improvement over MLP-fixed.}",
         "\\label{tab:encoding_modes}",
         "\\end{table}",
         "",
@@ -195,7 +195,7 @@ def gen_per_family_table(task: str, caption: str, metric_key: str, label: str, f
         f"\\caption{{{caption}}}",
         "\\begin{tabular}{lcc}",
         "\\toprule",
-        "Family & FW (det.) & No-adapt MLP \\\\",
+        "Family & HN-det & MLP-fixed \\\\",
         "\\midrule",
         body,
         "\\bottomrule",
