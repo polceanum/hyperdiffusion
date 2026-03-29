@@ -17,6 +17,7 @@ import torch.nn.functional as F
 
 from .diffusion import DiffusionSchedule, ddim_sample
 from .models import CandidateSelector, DiffusionDenoiser, HyperNetworkSystem, TargetArchitecture, functional_target_network
+from .protocol import PROTOCOL_SUITES, resolve_protocol_split
 from .tasks import (
     BANDIT_FAMILIES,
     BANDIT_TRAIN_GROUPS,
@@ -82,6 +83,8 @@ class ExperimentConfig:
     reward_audit_batch_size: int = 16
     device: str = "cpu"
     seed: int = 0
+    protocol_suite: str = "held_out"
+    strict_ood: bool = True
 
 
 class MetricsTracker:
@@ -103,7 +106,18 @@ class MetricsTracker:
 
 class Experiment:
     def __init__(self, config: ExperimentConfig, output_dir: Path):
+        protocol = resolve_protocol_split(
+            task_type=config.task_type,
+            suite=config.protocol_suite,
+            train_families=config.families,
+            eval_families=config.eval_families,
+            strict_ood=config.strict_ood,
+        )
+        config.families = list(protocol.train_families)
+        config.eval_families = list(protocol.eval_families)
+
         self.config = config
+        self.protocol = protocol
         self.output_dir = output_dir
         self.output_dir.mkdir(parents=True, exist_ok=True)
         (self.output_dir / "plots").mkdir(exist_ok=True)
@@ -1005,6 +1019,7 @@ class Experiment:
                 )
         summary["runtime_seconds"] = time.time() - t0
         summary["config"] = asdict(self.config)
+        summary["protocol"] = self.protocol.to_dict()
         with open(self.output_dir / "summary.json", "w", encoding="utf-8") as f:
             json.dump(summary, f, indent=2)
         export_latest_paper_results(summary)
@@ -1033,6 +1048,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--families", type=str, nargs="+", default=None)
     p.add_argument("--expanded-train-families", action="store_true")
     p.add_argument("--eval-families", type=str, nargs="*", default=None)
+    p.add_argument("--protocol-suite", type=str, choices=list(PROTOCOL_SUITES), default="held_out")
+    p.add_argument(
+        "--allow-eval-train-overlap",
+        action="store_true",
+        help="Disable strict train/eval disjointness checks (not recommended)",
+    )
     p.add_argument("--device", type=str, default="cpu")
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--train-steps-stage1", type=int, default=1200)
@@ -1077,20 +1098,13 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main() -> None:
     args = build_parser().parse_args()
-    if args.task_type == "classification":
-        families = EXPANDED_TRAIN_FAMILIES if args.expanded_train_families else (args.families or DEFAULT_TRAIN_FAMILIES)
-        eval_families = args.eval_families
-    elif args.task_type == "regression":
-        families = args.families or DEFAULT_REGRESSION_TRAIN_FAMILIES
-        eval_families = args.eval_families if args.eval_families is not None else DEFAULT_REGRESSION_EVAL_FAMILIES
-    elif args.task_type == "bandit_regression":
-        families = args.families or DEFAULT_BANDIT_TRAIN_FAMILIES
-        eval_families = args.eval_families if args.eval_families is not None else DEFAULT_BANDIT_EVAL_FAMILIES
-    elif args.task_type == "control":
-        families = args.families or DEFAULT_CONTROL_TRAIN_FAMILIES
-        eval_families = args.eval_families if args.eval_families is not None else DEFAULT_CONTROL_EVAL_FAMILIES
-    else:
-        raise ValueError(f"Unknown task_type: {args.task_type}")
+    families = args.families
+    eval_families = args.eval_families
+
+    if args.task_type == "classification" and args.expanded_train_families and args.families is None:
+        families = list(EXPANDED_TRAIN_FAMILIES)
+
+    strict_ood = not bool(args.allow_eval_train_overlap)
 
     config = ExperimentConfig(
         task_type=args.task_type,
@@ -1135,6 +1149,8 @@ def main() -> None:
         reward_audit_batch_size=args.reward_audit_batch_size,
         device=args.device,
         seed=args.seed,
+        protocol_suite=args.protocol_suite,
+        strict_ood=strict_ood,
     )
     exp = Experiment(config=config, output_dir=Path(args.output_dir))
     summary = exp.run()

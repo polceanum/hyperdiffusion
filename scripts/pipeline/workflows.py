@@ -23,10 +23,19 @@ def clean_refresh_outputs(cfg: PipelineConfig) -> None:
             cfg.runs_dir / "control_v2",
             cfg.runs_dir / "control_matrix_v2_multiseed",
             cfg.runs_dir / "direct_baseline_v2_multiseed",
+            cfg.runs_dir / "classification_cross_family_v2",
+            cfg.runs_dir / "regression_cross_family_v2",
+            cfg.runs_dir / "bandit_cross_family_v2",
+            cfg.runs_dir / "control_cross_family_v2",
+            cfg.runs_dir / "direct_baseline_cross_family_v2_multiseed",
             cfg.runs_dir / "cls_v2.log",
             cfg.runs_dir / "reg_v2.log",
             cfg.runs_dir / "bandit_v2.log",
             cfg.runs_dir / "ctrl_v2.log",
+            cfg.runs_dir / "cls_cross_family_v2.log",
+            cfg.runs_dir / "reg_cross_family_v2.log",
+            cfg.runs_dir / "bandit_cross_family_v2.log",
+            cfg.runs_dir / "ctrl_cross_family_v2.log",
         ]
     )
     cfg.runs_dir.mkdir(parents=True, exist_ok=True)
@@ -50,6 +59,8 @@ def run_v2_benchmark(cfg: PipelineConfig) -> None:
             task_type,
             "--output-dir",
             str(cfg.runs_dir / out_dir),
+                "--protocol-suite",
+                "held_out",
             "--train-steps-stage1",
             str(cfg.train_steps_stage1),
             "--train-steps-stage2",
@@ -85,6 +96,61 @@ def run_v2_benchmark(cfg: PipelineConfig) -> None:
         raise RuntimeError(f"Benchmark tasks failed: {', '.join(failed)}")
 
 
+def run_cross_family_benchmark(cfg: PipelineConfig) -> None:
+    log("Running cross-family benchmark suite (disjoint train/eval partitions)")
+    tasks = [
+        ("classification", "classification_cross_family_v2", "cls_cross_family_v2.log"),
+        ("regression", "regression_cross_family_v2", "reg_cross_family_v2.log"),
+        ("bandit_regression", "bandit_cross_family_v2", "bandit_cross_family_v2.log"),
+        ("control", "control_cross_family_v2", "ctrl_cross_family_v2.log"),
+    ]
+    procs: list[tuple[str, subprocess.Popen[str]]] = []
+    for task_type, out_dir, log_name in tasks:
+        cmd = [
+            cfg.python_exec,
+            "-m",
+            "hyperdiffusion.experiment",
+            "--task-type",
+            task_type,
+            "--protocol-suite",
+            "cross_family",
+            "--output-dir",
+            str(cfg.runs_dir / out_dir),
+            "--train-steps-stage1",
+            str(cfg.train_steps_stage1),
+            "--train-steps-stage2",
+            str(cfg.train_steps_stage2),
+            "--eval-batches",
+            str(cfg.eval_batches),
+            "--batch-size",
+            str(cfg.batch_size),
+            "--visualization-count",
+            str(cfg.visualization_count),
+        ]
+        if task_type == "control":
+            cmd += [
+                "--reward-audit-batches",
+                str(cfg.reward_audit_batches),
+                "--reward-audit-batch-size",
+                str(cfg.reward_audit_batch_size),
+            ]
+        log_path = cfg.runs_dir / log_name
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        out = log_path.open("w", encoding="utf-8")
+        procs.append((task_type, subprocess.Popen(cmd, cwd=str(cfg.root), stdout=out, stderr=subprocess.STDOUT, text=True)))
+
+    failed = []
+    for task_type, proc in procs:
+        code = proc.wait()
+        if code != 0:
+            failed.append(task_type)
+            log(f"{task_type} cross_family FAILED")
+        else:
+            log(f"{task_type} cross_family DONE")
+    if failed:
+        raise RuntimeError(f"Cross-family benchmark tasks failed: {', '.join(failed)}")
+
+
 def run_control_matrix_multiseed(cfg: PipelineConfig) -> None:
     log("Running control encoding matrix (multiseed)")
     output_root = cfg.runs_dir / "control_matrix_v2_multiseed"
@@ -106,6 +172,8 @@ def run_control_matrix_multiseed(cfg: PipelineConfig) -> None:
                 "control",
                 "--encoding-mode",
                 mode,
+                "--protocol-suite",
+                "held_out",
                 "--output-dir",
                 str(mode_out),
                 "--seed",
@@ -223,9 +291,14 @@ def aggregate_control_matrix(cfg: PipelineConfig) -> None:
     out.write_text(json.dumps(payload, indent=2))
 
 
-def run_direct_baseline_multiseed(cfg: PipelineConfig) -> None:
-    log("Running direct baseline multiseed (all tasks, support mode)")
-    output_root = cfg.runs_dir / "direct_baseline_v2_multiseed"
+def run_direct_baseline_multiseed(
+    cfg: PipelineConfig,
+    *,
+    protocol_suite: str = "held_out",
+    output_root_name: str = "direct_baseline_v2_multiseed",
+) -> None:
+    log(f"Running direct baseline multiseed (all tasks, support mode, suite={protocol_suite})")
+    output_root = cfg.runs_dir / output_root_name
     task_types = ["classification", "regression", "bandit_regression", "control"]
     for task_type in task_types:
         task_root = output_root / task_type
@@ -242,6 +315,8 @@ def run_direct_baseline_multiseed(cfg: PipelineConfig) -> None:
                 str(output_dir),
                 "--encoding-mode",
                 "support",
+                "--protocol-suite",
+                protocol_suite,
                 "--seed",
                 str(seed),
                 "--train-steps-stage1",
@@ -323,9 +398,15 @@ def clean_paper_artifacts(cfg: PipelineConfig) -> None:
 def full_refresh(cfg: PipelineConfig) -> None:
     clean_refresh_outputs(cfg)
     run_v2_benchmark(cfg)
+    run_cross_family_benchmark(cfg)
     run_control_matrix_multiseed(cfg)
     aggregate_control_matrix(cfg)
     run_direct_baseline_multiseed(cfg)
+    run_direct_baseline_multiseed(
+        cfg,
+        protocol_suite="cross_family",
+        output_root_name="direct_baseline_cross_family_v2_multiseed",
+    )
     exp_validation = validate_experiment_outputs(cfg)
     write_provenance_manifest(cfg, stage="post-experiments", validation=exp_validation)
     refresh_reports_and_plots(cfg)

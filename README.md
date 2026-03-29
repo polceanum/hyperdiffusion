@@ -29,6 +29,15 @@ python -m hyperdiffusion.experiment --task-type bandit_regression --output-dir r
 - `--selector-num-samples` (int): number of diffusion candidates for selector/best-of-k computation
 - `--selector-hidden` (int): hidden dim for selector network
 - `--selector-lr` (float): selector learning rate
+- `--protocol-suite` (`held_out` or `cross_family`): unified split protocol used by both `hyperdiffusion.experiment` and `hyperdiffusion.direct_experiment`
+- `--allow-eval-train-overlap`: disables strict disjoint split enforcement (not recommended)
+
+### Protocol guarantees (scientific hygiene)
+
+- By default (`strict_ood=True`), train and eval family sets must be disjoint; overlap raises an error.
+- Both variants and baselines use the exact same train/eval family split resolver (`hyperdiffusion.protocol`).
+- `held_out` suite: train on core families, evaluate on unseen families.
+- `cross_family` suite: deterministic disjoint partition across the full family set for each task.
 
 ## Paper pipeline
 
@@ -39,6 +48,8 @@ Preferred modular entrypoints:
 3. `python -m scripts.pipeline.cli refresh-artifacts` to regenerate tables/plots/reports (gated by experiment validation)
 4. `python -m scripts.pipeline.cli build-paper` to compile `paper.pdf` (gated by paper artifact validation)
 5. `python -m scripts.pipeline.cli full-refresh` to rerun full benchmark + matrix + direct baseline + paper
+6. `python -m scripts.pipeline.cli benchmark` (alias to `full-refresh`) to ensure review-ready paper outputs
+7. `python -m scripts.pipeline.cli benchmark-cross-family` (alias to `full-refresh`) to ensure review-ready paper outputs while including cross-family runs
 
 Validation/provenance output:
 

@@ -43,6 +43,29 @@ def _require_overall_metric(overall: dict[str, Any], keys: list[str], artifact: 
             raise ValidationError(f"Non-numeric metric '{key}' in {artifact}: {value}")
 
 
+def _validate_protocol_block(data: dict[str, Any], artifact: Path, *, expected_task_type: str) -> None:
+    protocol = data.get("protocol")
+    if not isinstance(protocol, dict):
+        raise ValidationError(f"Missing protocol block in {artifact}")
+
+    task_type = protocol.get("task_type")
+    if task_type != expected_task_type:
+        raise ValidationError(
+            f"Protocol task_type mismatch in {artifact}: expected={expected_task_type} found={task_type}"
+        )
+
+    train_families = protocol.get("train_families")
+    eval_families = protocol.get("eval_families")
+    if not isinstance(train_families, list) or not train_families:
+        raise ValidationError(f"Protocol train_families missing/empty in {artifact}")
+    if not isinstance(eval_families, list) or not eval_families:
+        raise ValidationError(f"Protocol eval_families missing/empty in {artifact}")
+
+    overlap = sorted(set(train_families) & set(eval_families))
+    if overlap:
+        raise ValidationError(f"Train/eval family overlap detected in {artifact}: {overlap}")
+
+
 def _discover_seed_dirs(root: Path, prefix: str = "seed_") -> list[int]:
     discovered: list[int] = []
     for path in sorted(root.glob(f"{prefix}*")):
@@ -59,6 +82,7 @@ def _validate_task_summaries(cfg: PipelineConfig) -> dict[str, str]:
     for task_type, run_dir in TASK_SUMMARY_DIRS.items():
         summary_path = cfg.runs_dir / run_dir / "summary.json"
         data = _load_json(summary_path)
+        _validate_protocol_block(data, summary_path, expected_task_type=task_type)
         overall = data.get("overall")
         if not isinstance(overall, dict):
             raise ValidationError(f"Missing 'overall' object in {summary_path}")
@@ -163,6 +187,7 @@ def _validate_direct_baseline(cfg: PipelineConfig) -> dict[str, Any]:
         for seed in common_seeds:
             summary_path = task_root / f"direct_support_seed{seed}" / "summary.json"
             data = _load_json(summary_path)
+            _validate_protocol_block(data, summary_path, expected_task_type=task)
             overall = data.get("overall", {})
             if not isinstance(overall, dict):
                 raise ValidationError(f"Missing direct overall block in {summary_path}")

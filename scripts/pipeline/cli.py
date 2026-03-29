@@ -11,6 +11,7 @@ from .workflows import (
     clean_paper_artifacts,
     full_refresh,
     refresh_reports_and_plots,
+    run_cross_family_benchmark,
     run_v2_benchmark,
 )
 
@@ -23,7 +24,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Unified modular pipeline for HyperDiffusion")
     parser.add_argument(
         "command",
-        choices=["full-refresh", "benchmark", "refresh-artifacts", "build-paper", "clean-paper", "validate"],
+        choices=["full-refresh", "benchmark", "benchmark-cross-family", "refresh-artifacts", "build-paper", "clean-paper", "validate"],
     )
     parser.add_argument("--python", dest="python_exec", default=None, help="Python executable to use")
     parser.add_argument("--train-steps-stage1", type=int, default=1000)
@@ -64,7 +65,9 @@ def main() -> None:
     if args.command == "full-refresh":
         full_refresh(cfg)
     elif args.command == "benchmark":
-        run_v2_benchmark(cfg)
+        full_refresh(cfg)
+    elif args.command == "benchmark-cross-family":
+        full_refresh(cfg)
     elif args.command == "refresh-artifacts":
         refresh_reports_and_plots(cfg)
     elif args.command == "build-paper":

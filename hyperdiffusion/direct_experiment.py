@@ -13,6 +13,7 @@ import torch.nn.functional as F
 
 from .direct_baseline import DirectSystem
 from .experiment import ExperimentConfig, MetricsTracker
+from .protocol import PROTOCOL_SUITES, resolve_protocol_split
 from .tasks import (
     CONTROL_FAMILIES,
     DEFAULT_BANDIT_EVAL_FAMILIES,
@@ -31,7 +32,18 @@ class DirectExperiment:
     """Direct baseline experiment for control task."""
 
     def __init__(self, config: ExperimentConfig, output_dir: Path, device: str = "cpu"):
+        protocol = resolve_protocol_split(
+            task_type=config.task_type,
+            suite=config.protocol_suite,
+            train_families=config.families,
+            eval_families=config.eval_families,
+            strict_ood=config.strict_ood,
+        )
+        config.families = list(protocol.train_families)
+        config.eval_families = list(protocol.eval_families)
+
         self.config = config
+        self.protocol = protocol
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.device = device
@@ -362,6 +374,7 @@ class DirectExperiment:
         metric_name = self._metric_name()
         summary = {
             "config": asdict(self.config),
+            "protocol": self.protocol.to_dict(),
             "overall": {
                 f"direct_{metric_name}": eval_result[f"direct_{metric_name}"],
                 f"baseline_{metric_name}": eval_result[f"baseline_{metric_name}"],
@@ -397,6 +410,14 @@ def main():
     parser.add_argument("--task-type", type=str, default="control", choices=["classification", "regression", "bandit_regression", "control"])
     parser.add_argument("--output-dir", type=str, required=True)
     parser.add_argument("--encoding-mode", type=str, default="support", choices=["support", "text", "hybrid", "oracle"])
+    parser.add_argument("--families", type=str, nargs="+", default=None)
+    parser.add_argument("--eval-families", type=str, nargs="*", default=None)
+    parser.add_argument("--protocol-suite", type=str, choices=list(PROTOCOL_SUITES), default="held_out")
+    parser.add_argument(
+        "--allow-eval-train-overlap",
+        action="store_true",
+        help="Disable strict train/eval disjointness checks (not recommended)",
+    )
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--train-steps-stage1", type=int, default=1000)
     parser.add_argument("--train-steps-stage2", type=int, default=1000)  # Not used for direct
@@ -410,18 +431,9 @@ def main():
 
     args = parser.parse_args()
 
-    if args.task_type == "classification":
-        families = DEFAULT_TRAIN_FAMILIES
-        eval_families = None
-    elif args.task_type == "regression":
-        families = DEFAULT_REGRESSION_TRAIN_FAMILIES
-        eval_families = DEFAULT_REGRESSION_EVAL_FAMILIES
-    elif args.task_type == "bandit_regression":
-        families = DEFAULT_BANDIT_TRAIN_FAMILIES
-        eval_families = DEFAULT_BANDIT_EVAL_FAMILIES
-    else:
-        families = DEFAULT_CONTROL_TRAIN_FAMILIES
-        eval_families = DEFAULT_CONTROL_EVAL_FAMILIES
+    families = args.families
+    eval_families = args.eval_families
+    strict_ood = not bool(args.allow_eval_train_overlap)
 
     config = ExperimentConfig(
         task_type=args.task_type,
@@ -433,6 +445,8 @@ def main():
         eval_batches=args.eval_batches,
         batch_size=args.batch_size,
         device=args.device,
+        protocol_suite=args.protocol_suite,
+        strict_ood=strict_ood,
     )
 
     experiment = DirectExperiment(config, Path(args.output_dir), device=args.device)
