@@ -8,7 +8,7 @@ The direct baseline is a simplified baseline model that performs end-to-end meta
 
 ## What Was Implemented
 
-### 1. Core Models (`hyperdiffusion/direct_baseline.py`)
+### 1. Core Models (`hyperweights/direct_baseline.py`)
 
 #### `DirectPredictor`
 - **Purpose**: Core end-to-end prediction model
@@ -59,7 +59,7 @@ The direct baseline is a simplified baseline model that performs end-to-end meta
 - Component documentation
 - Usage examples
 - Design rationale
-- Comparison with full Hyperdiffusion
+- Comparison with full HyperWeights
 - Hyperparameter tuning guide
 - Troubleshooting section
 - Performance benchmarks
@@ -97,7 +97,7 @@ The direct baseline is a simplified baseline model that performs end-to-end meta
 ## File Structure
 
 ```
-hyperdiffusion/
+hyperweights/
 ├── direct_baseline.py              # Core implementation (165 lines)
 │   ├── DirectPredictor
 │   ├── DirectTextProjector
@@ -226,7 +226,7 @@ Query X ────────────┬───────────
 
 ### Basic Usage
 ```python
-from hyperdiffusion.direct_baseline import DirectPredictor
+from hyperweights.direct_baseline import DirectPredictor
 
 model = DirectPredictor(x_dim=2, y_dim=1)
 predictions = model(support_x, support_y, query_x)
@@ -261,7 +261,7 @@ pytest tests/test_direct_baseline.py -v
 pytest tests/test_direct_baseline.py::TestDirectPredictor -v
 
 # With coverage
-pytest tests/test_direct_baseline.py --cov=hyperdiffusion.direct_baseline
+pytest tests/test_direct_baseline.py --cov=hyperweights.direct_baseline
 
 # Run example
 python examples/direct_baseline_example.py
@@ -296,7 +296,7 @@ python examples/direct_baseline_example.py
 
 ## Comparison Matrix
 
-| Aspect | Direct | Full Hyperdiffusion | Random | MLP |
+| Aspect | Direct | Full HyperWeights | Random | MLP |
 |--------|--------|-------------------|--------|-----|
 | Complexity | ⭐ | ⭐⭐⭐⭐ | ⭐ | ⭐⭐ |
 | Accuracy | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐ | ⭐⭐ |
@@ -312,7 +312,7 @@ python examples/direct_baseline_example.py
 - Works with standard PyTorch training loops
 - Integrates with tensorboard, wandb, etc.
 
-### With Full Hyperdiffusion
+### With Full HyperWeights
 - Can run alongside full model
 - Shares encoder infrastructure
 - Provides reference for comparison
@@ -359,7 +359,7 @@ python examples/direct_baseline_example.py
 2. **See it in action**: Run `examples/direct_baseline_example.py`
 3. **Run the tests**: `pytest tests/test_direct_baseline.py -v`
 4. **Integrate**: Use `DirectPredictor` in your experiments
-5. **Compare**: Benchmark against full Hyperdiffusion
+5. **Compare**: Benchmark against full HyperWeights
 
 ## Support & Documentation
 
@@ -369,7 +369,7 @@ python examples/direct_baseline_example.py
 | Integration Guide | `docs/DIRECT_BASELINE_INTEGRATION.md` | How to use and extend |
 | Example Code | `examples/direct_baseline_example.py` | Runnable demonstration |
 | Test Suite | `tests/test_direct_baseline.py` | Validation & examples |
-| Source Code | `hyperdiffusion/direct_baseline.py` | Implementation details |
+| Source Code | `hyperweights/direct_baseline.py` | Implementation details |
 
 ## Conclusion
 

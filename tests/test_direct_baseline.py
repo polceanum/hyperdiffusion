@@ -3,7 +3,7 @@ import pytest
 import torch
 import torch.nn as nn
 
-from hyperdiffusion.direct_baseline import DirectPredictor, DirectTextProjector, DirectSystem
+from hyperweights.direct_baseline import DirectPredictor, DirectTextProjector, DirectSystem
 
 
 class TestDirectPredictor:

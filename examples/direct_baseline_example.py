@@ -11,7 +11,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, IterableDataset
 
-from hyperdiffusion.direct_baseline import DirectPredictor
+from hyperweights.direct_baseline import DirectPredictor
 
 
 class SinusoidDataset(IterableDataset):

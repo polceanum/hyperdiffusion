@@ -123,7 +123,7 @@ def run_v2_benchmark(cfg: PipelineConfig) -> None:
         cmd = [
             cfg.python_exec,
             "-m",
-            "hyperdiffusion.experiment",
+            "hyperweights.experiment",
             "--task-type",
             task_type,
             "--output-dir",
@@ -178,7 +178,7 @@ def run_cross_family_benchmark(cfg: PipelineConfig) -> None:
         cmd = [
             cfg.python_exec,
             "-m",
-            "hyperdiffusion.experiment",
+            "hyperweights.experiment",
             "--task-type",
             task_type,
             "--protocol-suite",
@@ -236,7 +236,7 @@ def run_control_matrix_multiseed(cfg: PipelineConfig) -> None:
             cmd = [
                 cfg.python_exec,
                 "-m",
-                "hyperdiffusion.experiment",
+                "hyperweights.experiment",
                 "--task-type",
                 "control",
                 "--encoding-mode",
@@ -377,7 +377,7 @@ def run_direct_baseline_multiseed(
             cmd = [
                 cfg.python_exec,
                 "-m",
-                "hyperdiffusion.direct_experiment",
+                "hyperweights.direct_experiment",
                 "--task-type",
                 task_type,
                 "--output-dir",

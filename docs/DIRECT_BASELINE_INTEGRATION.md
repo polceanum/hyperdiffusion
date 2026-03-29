@@ -4,17 +4,17 @@
 
 ### 1. Installation & Setup
 
-The direct baseline is part of the hyperdiffusion package. No additional installation needed:
+The direct baseline is part of the hyperweights package. No additional installation needed:
 
 ```python
-from hyperdiffusion.direct_baseline import DirectPredictor, DirectSystem
+from hyperweights.direct_baseline import DirectPredictor, DirectSystem
 ```
 
 ### 2. Basic Usage
 
 ```python
 import torch
-from hyperdiffusion.direct_baseline import DirectPredictor
+from hyperweights.direct_baseline import DirectPredictor
 
 # Create model
 model = DirectPredictor(x_dim=2, y_dim=1)
@@ -269,11 +269,11 @@ def evaluate_few_shot(model, episodes, k_shot, k_query):
     }
 ```
 
-## Comparison with Full Hyperdiffusion
+## Comparison with Full HyperWeights
 
 The direct baseline is intentionally simple to serve as a reference point.
 
-| Feature | Direct | Full Hyperdiffusion |
+| Feature | Direct | Full HyperWeights |
 |---------|--------|------------------|
 | Context type | Fixed global | Adaptive/Per-query |
 | Weight generation | None | Hypernetwork |
@@ -289,7 +289,7 @@ The direct baseline is intentionally simple to serve as a reference point.
 - Limited computational resources
 - Interpretability requirements
 
-**When to use full hyperdiffusion:**
+**When to use full hyperweights:**
 - Maximizing accuracy
 - Complex task distributions
 - Per-query adaptation needed
@@ -314,7 +314,7 @@ class MLPBaseline(nn.Module):
         return self.mlp(x)
 
 # New: Direct baseline (much better!)
-from hyperdiffusion.direct_baseline import DirectPredictor
+from hyperweights.direct_baseline import DirectPredictor
 
 baseline = DirectPredictor(x_dim=2, y_dim=1)
 ```
@@ -414,7 +414,7 @@ pytest tests/test_direct_baseline.py -v
 pytest tests/test_direct_baseline.py::TestDirectPredictor -v
 
 # With coverage
-pytest tests/test_direct_baseline.py --cov=hyperdiffusion.direct_baseline
+pytest tests/test_direct_baseline.py --cov=hyperweights.direct_baseline
 ```
 
 ## Common Issues & Solutions
@@ -475,10 +475,10 @@ writer.close()
 2. **Run tests**: `pytest tests/test_direct_baseline.py -v`
 3. **Read documentation**: See `docs/direct_baseline.md`
 4. **Adapt to your task**: Modify input/output dimensions
-5. **Compare with full model**: Benchmark against hyperdiffusion
+5. **Compare with full model**: Benchmark against hyperweights
 
 ## Support & Debugging
 
-For detailed architecture information, see [direct_baseline.py](../hyperdiffusion/direct_baseline.py).
+For detailed architecture information, see [direct_baseline.py](../hyperweights/direct_baseline.py).
 
 For full documentation, see [docs/direct_baseline.md](direct_baseline.md).

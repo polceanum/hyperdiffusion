@@ -112,7 +112,7 @@ pred = system(None, None, query_x, context=my_context)
 ### Basic Prediction
 
 ```python
-from hyperdiffusion.direct_baseline import DirectPredictor
+from hyperweights.direct_baseline import DirectPredictor
 import torch
 
 model = DirectPredictor(x_dim=2, y_dim=1)
@@ -132,7 +132,7 @@ with torch.no_grad():
 ### Training Loop
 
 ```python
-from hyperdiffusion.direct_baseline import DirectPredictor
+from hyperweights.direct_baseline import DirectPredictor
 import torch.optim as optim
 
 model = DirectPredictor(x_dim=2, y_dim=1)
@@ -160,7 +160,7 @@ for epoch in range(100):
 ### Multi-Modal Training
 
 ```python
-from hyperdiffusion.direct_baseline import DirectSystem
+from hyperweights.direct_baseline import DirectSystem
 
 system = DirectSystem(
     x_dim=2,
@@ -211,9 +211,9 @@ combined_loss = system.text_mix_alpha * loss_support + (1 - system.text_mix_alph
 - **No Adaptive Weights**: Cannot generate problem-specific weights like the full hypernetwork approach
 - **Information Bottleneck**: All task information must be compressed into a single context vector
 
-## Comparison with Full Hyperdiffusion
+## Comparison with Full HyperWeights
 
-| Aspect | Direct Baseline | Full Hyperdiffusion |
+| Aspect | Direct Baseline | Full HyperWeights |
 |--------|-----------------|-------------------|
 | Prediction Mechanism | Fixed context → MLP | Adaptive weights from hypernetwork |
 | Context Usage | Global (shared across queries) | Per-query or adaptive |
@@ -223,23 +223,23 @@ combined_loss = system.text_mix_alpha * loss_support + (1 - system.text_mix_alph
 | Flexibility | Limited | High |
 | Task Adaptation | Fixed after encoding | Full task-specific adaptation |
 
-## Integration with Hyperdiffusion
+## Integration with HyperWeights
 
 The direct baseline can be used standalone or integrated into the full system:
 
 ```python
-from hyperdiffusion.models import AttentionSetEncoder
-from hyperdiffusion.direct_baseline import DirectSystem
+from hyperweights.models import AttentionSetEncoder
+from hyperweights.direct_baseline import DirectSystem
 
 # The DirectSystem uses AttentionSetEncoder internally
-# This ensures consistency with the full hyperdiffusion approach
+# This ensures consistency with the full hyperweights approach
 system = DirectSystem(...)
 
 # Can use the same support set encoding as full model
 context_direct = system.encode_support(support_x, support_y)
 
 # Compare with full model's encoding
-full_model = MyFullHyperdiffusionModel(...)
+full_model = MyFullHyperWeightsModel(...)
 context_full, latent_full = full_model.encoder(support_x, support_y)
 
 # Different but trained on same data

@@ -1042,7 +1042,7 @@ def export_latest_paper_results(summary):
 
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(description="Hyperdiffusion toy experiment")
+    p = argparse.ArgumentParser(description="HyperWeights toy experiment")
     p.add_argument("--output-dir", type=str, default="runs/default")
     p.add_argument("--task-type", type=str, choices=["classification", "regression", "bandit_regression", "control"], default="classification")
     p.add_argument("--families", type=str, nargs="+", default=None)

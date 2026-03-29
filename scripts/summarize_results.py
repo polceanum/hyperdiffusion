@@ -1,5 +1,5 @@
 """
-Consolidated results summary for HyperDiffusion experiments.
+Consolidated results summary for HyperWeights experiments.
 
 Reads:
   - runs/{task}_v2/summary.json      : per-task benchmarks (classification, regression, bandit, control)

@@ -1,4 +1,4 @@
-# hyperdiffusion
+# hyperweights
 
 ## New features
 
@@ -11,17 +11,17 @@
 
 Run classification (default):
 ```bash
-python -m hyperdiffusion.experiment --task-type classification --output-dir runs/classification
+python -m hyperweights.experiment --task-type classification --output-dir runs/classification
 ```
 
 Run regression with selector:
 ```bash
-python -m hyperdiffusion.experiment --task-type regression --selector-enabled --selector-num-samples 8 --output-dir runs/regression
+python -m hyperweights.experiment --task-type regression --selector-enabled --selector-num-samples 8 --output-dir runs/regression
 ```
 
 Run adaptive bandit regression:
 ```bash
-python -m hyperdiffusion.experiment --task-type bandit_regression --output-dir runs/bandit
+python -m hyperweights.experiment --task-type bandit_regression --output-dir runs/bandit
 ```
 
 ### New flags
@@ -29,13 +29,13 @@ python -m hyperdiffusion.experiment --task-type bandit_regression --output-dir r
 - `--selector-num-samples` (int): number of diffusion candidates for selector/best-of-k computation
 - `--selector-hidden` (int): hidden dim for selector network
 - `--selector-lr` (float): selector learning rate
-- `--protocol-suite` (`held_out` or `cross_family`): unified split protocol used by both `hyperdiffusion.experiment` and `hyperdiffusion.direct_experiment`
+- `--protocol-suite` (`held_out` or `cross_family`): unified split protocol used by both `hyperweights.experiment` and `hyperweights.direct_experiment`
 - `--allow-eval-train-overlap`: disables strict disjoint split enforcement (not recommended)
 
 ### Protocol guarantees (scientific hygiene)
 
 - By default (`strict_ood=True`), train and eval family sets must be disjoint; overlap raises an error.
-- Both variants and baselines use the exact same train/eval family split resolver (`hyperdiffusion.protocol`).
+- Both variants and baselines use the exact same train/eval family split resolver (`hyperweights.protocol`).
 - `held_out` suite: train on core families, evaluate on unseen families.
 - `cross_family` suite: deterministic disjoint partition across the full family set for each task.
 

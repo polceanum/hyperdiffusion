@@ -21,7 +21,7 @@ def _project_root() -> Path:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Unified modular pipeline for HyperDiffusion")
+    parser = argparse.ArgumentParser(description="Unified modular pipeline for HyperWeights")
     parser.add_argument(
         "command",
         choices=["full-refresh", "benchmark", "benchmark-cross-family", "refresh-artifacts", "build-paper", "clean-paper", "validate"],

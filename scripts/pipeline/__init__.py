@@ -1,1 +1,1 @@
-"""Structured automation pipeline for HyperDiffusion experiments and paper builds."""
+"""Structured automation pipeline for HyperWeights experiments and paper builds."""
