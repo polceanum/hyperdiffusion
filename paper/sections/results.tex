@@ -6,9 +6,9 @@ We train separate instances of the experimental system for four task domains usi
 All models use 1000 gradient steps per stage, batch size 32, and support size $N{=}16$.
 Evaluation is performed on held-out \emph{OOD families} that were never observed during training.
 The primary model applies the deterministic encoder latent $z$ directly to the hypernetwork.
-The \emph{No-adapt MLP} is a static task-agnostic predictor with no access to support data, trained jointly
-as a non-adaptive lower bound.
-It is a learned model, but uses a single shared policy for all tasks, unlike support-conditioned methods.
+The \emph{No-adapt MLP} is a task-agnostic MLP ($x \to y$) with no access to the support set---a non-adaptive lower bound that uses a single shared policy for all tasks.
+The \emph{Direct (no FW)} model uses the same attention encoder as FW (det.)\ and is therefore support-conditioned (adaptive), but it predicts outputs directly from the encoded context without generating any network weights.
+These two baselines serve distinct roles: No-adapt MLP measures whether adaptation is worthwhile at all; Direct (no FW) measures whether producing network weights adds value over support-conditioned direct prediction.
 
 \paragraph{Task families.}
 \emph{Classification} (8 train / 0 explicit eval families): 2D binary tasks spanning linear, XOR-style nonlinear separability, moons/circles manifolds, sinusoidal boundaries, and checkerboard/ring structure.
@@ -187,7 +187,7 @@ suggesting the current support size is near the saturation regime for this task 
 \subsection{Qualitative Examples}
 
 These qualitative panels compare FW (det.) and the No-adapt MLP.
-Direct (no FW) is compared quantitatively in Figure~\ref{fig:task_benchmark}.
+Direct (no FW) results appear in the cross-check paragraph in Section~\ref{sec:experiments}; it is not plotted in Figure~\ref{fig:task_benchmark} (which shows only FW (det.) vs the No-adapt MLP).
 
 \begin{figure}[ht]
 \centering

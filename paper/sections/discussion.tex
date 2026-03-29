@@ -10,11 +10,12 @@ classification strong, regression moderate, and bandit hardest.
 This pattern is stable across FW (det.) analyses and indicates that task
 geometry---not just model capacity---is the main determinant of OOD generalization quality.
 
-\paragraph{Direct baseline comparison reveals meta-learning value.}
-The No-adapt MLP provides a strong sanity check on meta-learning necessity.
+\paragraph{No-adapt MLP comparison reveals meta-learning necessity.}
+The No-adapt MLP provides a strong sanity check on whether per-episode adaptation is worth it.
 On regression it achieves negative $R^2$ ($-1.786$), failing to provide useful predictive structure; FW (det.)'s advantage is clear.
 On control the No-adapt MLP achieves $R^2 = 0.790$, capturing shared qualitative structure (stabilization via negative feedback) but missing task-specific geometry.
 FW (det.)'s $+25.9\%$ improvement reflects genuine task adaptation beyond family-level prototyping.
+Note that the No-adapt MLP is fundamentally different from Direct (no FW): the No-adapt MLP never sees the support set (non-adaptive), whereas Direct (no FW) conditions on support data but skips the weight-generation step.
 
 \paragraph{Oracle collapse: what structural information decoders need.}
 One of the most diagnostic findings is oracle mode's poor performance: providing perfect task identification (one-hot family index) yields only $16.7\%\pm14.3\%$ win-rate.

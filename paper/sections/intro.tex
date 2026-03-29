@@ -28,7 +28,7 @@ We evaluate systematically across classification, regression, bandit optimisatio
 Our contributions are:
 \begin{enumerate}
   \item A diagnostic empirical study of what structural properties of task encoding enable decoder generalization across heterogeneous task domains.
-  \item Systematic comparison of four encoding modalities (support, text, hybrid, oracle) revealing distinct trade-offs: support achieves high reconstruction, hybrid achieves the strongest reward, and oracle performs poorly.
+  \item Systematic comparison of four encoding modalities (support, text, hybrid, oracle) revealing distinct trade-offs: support achieves high reconstruction ($R^2 = 0.971 \pm 0.007$), text achieves the strongest deployed reward ($26.4\%\pm6.1\%$ win-rate), and oracle performs poorly despite perfect task identification.
   \item Empirical identification of the \emph{reconstruction--reward gap}: high parameter-space $R^2$ does not guarantee deployed reward. This gap suggests decoders learn to fit parameter space without capturing task structure relevant for generalization.
   \item The oracle collapse result: perfect task identification (one-hot family index) achieves only $6.6\%\pm6.3\%$ win-rate, suggesting that task labels are insufficient on their own. In our setting, decoders benefit from structural task information (demonstrations or language descriptions) rather than categorical identity alone.
   \item A practical finding on representation choice: demonstration and hybrid encodings provide the most reliable improvements, while label-only conditioning remains fragile.
