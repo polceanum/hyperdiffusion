@@ -4,10 +4,10 @@
 \toprule
 Task & Metric & FW (det.) & No-adapt MLP & FW Gain \\
 \midrule
-  Classification & Acc. & 0.809 & 0.665 & +21.7\% \\
-  Regression & R\textsuperscript{2} & 0.670 & -1.782 & +137.6\% \\
-  Bandit & R\textsuperscript{2} & 0.090 & -2.274 & +104.0\% \\
-  Control & R\textsuperscript{2} & 0.974 & 0.789 & +23.3\% \\
+  Classification & Acc. & 0.823 & 0.668 & +23.2\% \\
+  Regression & R\textsuperscript{2} & 0.603 & -1.781 & +133.8\% \\
+  Bandit & R\textsuperscript{2} & 0.227 & -2.256 & +110.0\% \\
+  Control & R\textsuperscript{2} & 0.983 & 0.794 & +23.8\% \\
 \bottomrule
 \end{tabular}
 \caption{Per-task benchmark from run-level \texttt{overall} summaries (v2 results, 1000 training steps per stage). \emph{FW (det.)}: fast-weights hypernetwork, deterministic attention over support set (no sampling). \emph{No-adapt MLP}: task-agnostic learned MLP, no support conditioning at test time. FW Gain shows relative improvement of FW (det.) over No-adapt MLP.}
@@ -20,10 +20,10 @@ Task & Metric & FW (det.) & No-adapt MLP & FW Gain \\
 \toprule
 Mode & FW(det.) R\textsuperscript{2} & No-adapt R\textsuperscript{2} & Reward Win & $\Delta$Reward \\
 \midrule
-  Support & 0.973 $\pm$ 0.001 & 0.816 $\pm$ 0.029 & 22.2\% $\pm$ 9.4\% & -6.01 $\pm$ 0.58 \\
-  Text (DistilBERT) & 0.813 $\pm$ 0.044 & 0.815 $\pm$ 0.031 & 12.2\% $\pm$ 21.0\% & -3.96 $\pm$ 1.21 \\
-  Hybrid & 0.970 $\pm$ 0.005 & 0.818 $\pm$ 0.034 & 21.9\% $\pm$ 6.8\% & -4.73 $\pm$ 0.87 \\
-  Oracle & 0.867 $\pm$ 0.033 & 0.817 $\pm$ 0.033 & 1.7\% $\pm$ 2.2\% & -3.02 $\pm$ 0.58 \\
+  Support & 0.970 $\pm$ 0.004 & 0.818 $\pm$ 0.032 & 26.0\% $\pm$ 13.6\% & -4.99 $\pm$ 1.39 \\
+  Text (DistilBERT) & 0.817 $\pm$ 0.048 & 0.817 $\pm$ 0.035 & 15.6\% $\pm$ 14.0\% & -4.01 $\pm$ 0.54 \\
+  Hybrid & 0.972 $\pm$ 0.002 & 0.815 $\pm$ 0.033 & 22.2\% $\pm$ 15.2\% & -5.79 $\pm$ 1.85 \\
+  Oracle & 0.859 $\pm$ 0.011 & 0.816 $\pm$ 0.033 & 1.0\% $\pm$ 1.0\% & -2.71 $\pm$ 0.53 \\
 \bottomrule
 \end{tabular}
 \caption{Encoding-mode ablation on control tasks (DistilBERT embeddings, 1000 steps, 3 seeds; mean$\pm$std). \emph{Win-rate}: fraction of OOD eval episodes where the meta-learned policy out-scores the No-adapt MLP. $\Delta$Reward: mean reward improvement over No-adapt MLP.}

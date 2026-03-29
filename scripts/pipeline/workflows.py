@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import statistics
 import subprocess
+import shutil
 
 from .config import PipelineConfig
 from .runner import log, remove_paths, run_cmd, run_cmd_capture_stdout
@@ -11,6 +12,74 @@ from .validate import (
     validate_paper_artifacts,
     write_provenance_manifest,
 )
+
+
+PRIMARY_PLOT_NAMES = {
+    "task_benchmark.png",
+    "encoding_mode_ablation.png",
+    "support_sweep.png",
+    "uncertainty_summary.png",
+    "baseline_comparison.png",
+}
+
+
+def _sync_diagnostic_plots_from_runs(cfg: PipelineConfig) -> None:
+    """Sync train/eval diagnostic PNGs from canonical run outputs into paper plots dir.
+
+    This keeps annex inputs aligned with latest experiment artifacts even when users
+    run refresh-artifacts without rerunning full training in the same process.
+    """
+    paper_plots_dir = cfg.paper_dir / "figures" / "plots"
+    paper_plots_dir.mkdir(parents=True, exist_ok=True)
+
+    # Remove previously-synced diagnostics while preserving curated summary plots.
+    for png in paper_plots_dir.glob("*.png"):
+        if png.name in PRIMARY_PLOT_NAMES:
+            continue
+        if png.name.startswith("train_") or png.name.startswith("eval_"):
+            png.unlink(missing_ok=True)
+
+    canonical_roots = [
+        cfg.runs_dir / "classification_v2",
+        cfg.runs_dir / "regression_v2",
+        cfg.runs_dir / "bandit_v2",
+        cfg.runs_dir / "control_v2",
+        cfg.runs_dir / "classification_cross_family_v2",
+        cfg.runs_dir / "regression_cross_family_v2",
+        cfg.runs_dir / "bandit_cross_family_v2",
+        cfg.runs_dir / "control_cross_family_v2",
+        cfg.runs_dir / "control_matrix_v2_multiseed",
+        cfg.runs_dir / "direct_baseline_v2_multiseed",
+        cfg.runs_dir / "direct_baseline_cross_family_v2_multiseed",
+    ]
+
+    plot_dirs = []
+    for root in canonical_roots:
+        if not root.exists():
+            continue
+        for path in sorted(root.rglob("plots")):
+            if path.is_dir():
+                plot_dirs.append(path)
+
+    # Keep newest source per filename to avoid stale overwrite ordering.
+    newest_by_name: dict[str, tuple[float, object]] = {}
+    for plot_dir in plot_dirs:
+        for png in plot_dir.glob("*.png"):
+            name = png.name
+            if not (name.startswith("train_") or name.startswith("eval_")):
+                continue
+            mtime = png.stat().st_mtime
+            prev = newest_by_name.get(name)
+            if prev is None or mtime >= prev[0]:
+                newest_by_name[name] = (mtime, png)
+
+    for _, src in newest_by_name.values():
+        shutil.copy2(src, paper_plots_dir / src.name)
+
+    log(
+        "Synced diagnostic plots to paper figures "
+        f"(files={len(newest_by_name)}, source_dirs={len(plot_dirs)})"
+    )
 
 
 def clean_refresh_outputs(cfg: PipelineConfig) -> None:
@@ -343,6 +412,7 @@ def refresh_reports_and_plots(cfg: PipelineConfig) -> None:
     log("Refreshing reports, tables, and plots")
     exp_validation = validate_experiment_outputs(cfg)
     write_provenance_manifest(cfg, stage="pre-paper-artifacts", validation=exp_validation)
+    _sync_diagnostic_plots_from_runs(cfg)
 
     run_cmd_capture_stdout(
         [cfg.python_exec, str(cfg.paper_dir / "audit_report.py")],
