@@ -643,11 +643,11 @@ class Experiment:
             best_acc_i = acc_stack[i, best_idx[i]].item()
             base_acc_i = baseline_acc[i].item()
             panels = [
-                (torch.sigmoid(enc_grid[i].squeeze(-1)).reshape(grid_size, grid_size).cpu(), f"encoder {acc_enc[i].item():.3f}"),
+                (torch.sigmoid(enc_grid[i].squeeze(-1)).reshape(grid_size, grid_size).cpu(), f"FW(det.) {acc_enc[i].item():.3f}"),
                 (best_grid[i].squeeze(-1).reshape(grid_size, grid_size).cpu(), f"best {best_acc_i:.3f}"),
-                (baseline_grid[i].squeeze(-1).reshape(grid_size, grid_size).cpu(), f"static baseline {baseline_acc[i].item():.3f}"),
+                (baseline_grid[i].squeeze(-1).reshape(grid_size, grid_size).cpu(), f"no-adapt {baseline_acc[i].item():.3f}"),
                 (mean_grid[i].squeeze(-1).reshape(grid_size, grid_size).cpu(), "mean prob"),
-                (baseline_gap[i].squeeze(-1).reshape(grid_size, grid_size).cpu(), "best-static |Δp|"),
+                (baseline_gap[i].squeeze(-1).reshape(grid_size, grid_size).cpu(), "best−no-adapt |Δp|"),
                 (disagreement[i].squeeze(-1).reshape(grid_size, grid_size).cpu(), "sample std"),
             ]
             for ax, (image, title) in zip(axes, panels):
@@ -656,7 +656,7 @@ class Experiment:
                 ax.scatter(sx[sl < 0.5], sy[sl < 0.5], s=12, edgecolor="black", facecolor="tab:blue", linewidth=0.4)
                 ax.scatter(sx[sl > 0.5], sy[sl > 0.5], s=12, edgecolor="black", facecolor="tab:orange", linewidth=0.4)
                 ax.set_title(title, fontsize=7); ax.set_xticks([]); ax.set_yticks([])
-            fig.suptitle(f"{prefix} | family={batch.family_name[i]} | Δ(best-static)={best_acc_i - base_acc_i:.3f}", fontsize=8)
+            fig.suptitle(f"{prefix} | family={batch.family_name[i]} | Δ(best−no-adapt)={best_acc_i - base_acc_i:.3f}", fontsize=8)
             out = self.output_dir / "plots" / f"{prefix}_{i:02d}.png"
             fig.savefig(out, dpi=90, bbox_inches='tight'); plt.close(fig)
             paths.append(str(out.relative_to(self.output_dir)))
@@ -705,11 +705,11 @@ class Experiment:
                 best_r2_i = metric_stack[i, best_idx[i]].item()
                 base_r2_i = baseline_metric[i].item()
                 panels = [
-                    (enc_curve[i, :, 0].cpu().numpy(), f"encoder r2={metric_enc[i].item():.3f}"),
+                    (enc_curve[i, :, 0].cpu().numpy(), f"FW(det.) r2={metric_enc[i].item():.3f}"),
                     (best_curve[i, :, 0].cpu().numpy(), f"best r2={best_r2_i:.3f}"),
-                    (baseline_curve[i, :, 0].cpu().numpy(), f"static baseline r2={baseline_metric[i].item():.3f}"),
-                    (mean_curve[i, :, 0].cpu().numpy(), "diffusion mean"),
-                    (baseline_gap_curve[i, :, 0].cpu().numpy(), "best-static |Δy|"),
+                    (baseline_curve[i, :, 0].cpu().numpy(), f"no-adapt r2={baseline_metric[i].item():.3f}"),
+                    (mean_curve[i, :, 0].cpu().numpy(), "FW(diff.) mean"),
+                    (baseline_gap_curve[i, :, 0].cpu().numpy(), "best−no-adapt |Δy|"),
                     (std_curve[i, :, 0].cpu().numpy(), "sample std"),
                 ]
                 for ax, (curve, title) in zip(axes, panels):
@@ -719,7 +719,7 @@ class Experiment:
                     ax.set_title(title, fontsize=7)
                     ax.tick_params(labelsize=6)
                 mode = "Evaluation (generalization)" if prefix.startswith("eval") else "Training (in-distribution)"
-                fig.suptitle(f"{prefix} | {mode} | family={batch.family_name[i]} | Δ(best-static)={best_r2_i - base_r2_i:.3f}", fontsize=8)
+                fig.suptitle(f"{prefix} | {mode} | family={batch.family_name[i]} | Δ(best−no-adapt)={best_r2_i - base_r2_i:.3f}", fontsize=8)
                 out = self.output_dir / "plots" / f"{prefix}_{i:02d}.png"
                 fig.savefig(out, dpi=90, bbox_inches='tight'); plt.close(fig)
                 paths.append(str(out.relative_to(self.output_dir)))
@@ -790,11 +790,11 @@ class Experiment:
                 error_vmax = max(enc_error.max(), best_error.max(), mean_error.max(), baseline_error.max())
 
                 surfaces = [
-                    (enc_surface[i].cpu().numpy(), f"encoder r2={metric_enc[i].item():.3f}", enc_error),
+                    (enc_surface[i].cpu().numpy(), f"FW(det.) r2={metric_enc[i].item():.3f}", enc_error),
                     (best_surface[i].cpu().numpy(), f"best r2={metric_stack[i, best_idx[i]].item():.3f}", best_error),
-                    (baseline_surface[i].cpu().numpy(), f"static baseline r2={baseline_metric[i].item():.3f}", baseline_error),
-                    (mean_surface[i].cpu().numpy(), "diffusion mean", mean_error),
-                    (best_baseline_gap_surface[i].cpu().numpy(), "best-static |Δy|", None),
+                    (baseline_surface[i].cpu().numpy(), f"no-adapt r2={baseline_metric[i].item():.3f}", baseline_error),
+                    (mean_surface[i].cpu().numpy(), "FW(diff.) mean", mean_error),
+                    (best_baseline_gap_surface[i].cpu().numpy(), "best−no-adapt |Δy|", None),
                     (std_surface[i].cpu().numpy(), "sample std", None),
                 ]
                 if gt_surfaces[i] is not None:
@@ -834,7 +834,7 @@ class Experiment:
                     ax.axis("off")
 
                 mode = "Evaluation (generalization)" if prefix.startswith("eval") else "Training (in-distribution)"
-                fig.suptitle(f"{prefix} | {mode} | family={batch.family_name[i]} | Δ(best-static)={metric_stack[i, best_idx[i]].item() - baseline_metric[i].item():.3f}", fontsize=8)
+                fig.suptitle(f"{prefix} | {mode} | family={batch.family_name[i]} | Δ(best−no-adapt)={metric_stack[i, best_idx[i]].item() - baseline_metric[i].item():.3f}", fontsize=8)
                 out = self.output_dir / "plots" / f"{prefix}_{i:02d}.png"
                 fig.savefig(out, dpi=90, bbox_inches='tight'); plt.close(fig)
                 paths.append(str(out.relative_to(self.output_dir)))
@@ -865,12 +865,12 @@ class Experiment:
                         static_rollout = family.rollout(baseline_policy, initial_state, num_steps=80, dt=0.05)
 
                         fig_r, ax_r = plt.subplots(figsize=(4.5, 2.8), constrained_layout=True)
-                        ax_r.plot(rollout_data["rewards"], label="learned step", color="tab:blue", lw=0.9)
-                        ax_r.plot(static_rollout["rewards"], label="static step", color="tab:red", linestyle="--", lw=0.8)
+                        ax_r.plot(rollout_data["rewards"], label="FW(det.) step", color="tab:blue", lw=0.9)
+                        ax_r.plot(static_rollout["rewards"], label="no-adapt step", color="tab:red", linestyle="--", lw=0.8)
                         ax_r.plot(baseline_rollout["rewards"], label="zero step", color="tab:green", linestyle="--", lw=0.8)
-                        ax_r.plot(rollout_data["cumulative_rewards"], label="learned cumulative", color="tab:orange", lw=0.9)
-                        ax_r.plot(static_rollout["cumulative_rewards"], label="static cumulative", color="tab:red", linestyle=":", lw=0.8)
-                        ax_r.plot(baseline_rollout["cumulative_rewards"], label="zero cumulative", color="tab:green", linestyle=":", lw=0.8)
+                        ax_r.plot(rollout_data["cumulative_rewards"], label="FW(det.) cumul.", color="tab:orange", lw=0.9)
+                        ax_r.plot(static_rollout["cumulative_rewards"], label="no-adapt cumul.", color="tab:red", linestyle=":", lw=0.8)
+                        ax_r.plot(baseline_rollout["cumulative_rewards"], label="zero cumul.", color="tab:green", linestyle=":", lw=0.8)
                         ax_r.set_xlabel("time step", fontsize=7)
                         ax_r.set_ylabel("higher is better", fontsize=7)
                         ax_r.set_title(f"{prefix} reward | family={batch.family_name[i]}", fontsize=7)
