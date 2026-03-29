@@ -27,15 +27,29 @@ def get_main_metrics(task, data):
     }
 
 
+def _extract_metric_triplet(block):
+    if not block:
+        return None
+    if "encoder_acc" in block:
+        return {
+            "metric": "acc",
+            "encoder": block["encoder_acc"],
+            "diffusion": block["diffusion_acc"],
+            "baseline": block["baseline_acc"],
+        }
+    if "encoder_r2" in block:
+        return {
+            "metric": "r2",
+            "encoder": block["encoder_r2"],
+            "diffusion": block["diffusion_r2"],
+            "baseline": block["baseline_r2"],
+        }
+    return None
+
+
 def get_ood_metrics(task, data):
     gen = data.get("generalization", {}).get("eval_summary", {}).get("overall")
-    if not gen:
-        return None
-    return {
-        "encoder": gen["encoder_r2"],
-        "diffusion": gen["diffusion_r2"],
-        "baseline": gen["baseline_r2"],
-    }
+    return _extract_metric_triplet(gen)
 
 
 def main():
@@ -44,18 +58,19 @@ def main():
     for task, path in RUNS.items():
         data = json.loads(path.read_text())
         m = get_main_metrics(task, data)
+        protocol = data.get("protocol", {})
         cfg = data.get("config", {})
-        fam = cfg.get("families") or []
-        eval_fam = cfg.get("eval_families") or []
+        fam = protocol.get("train_families") or cfg.get("families") or []
+        eval_fam = protocol.get("eval_families") or cfg.get("eval_families") or []
         print(f"\n{task}")
         print(f"  source: {path}")
         print(f"  split config: train={len(fam)} eval={len(eval_fam)}")
-        print(f"  main metrics: encoder={m['encoder']:.4f} diffusion={m['diffusion']:.4f} baseline={m['baseline']:.4f}")
+        print(f"  main metrics: fw_det={m['encoder']:.4f} fw_diff={m['diffusion']:.4f} baseline={m['baseline']:.4f}")
         ood = get_ood_metrics(task, data)
         if ood is None:
             print("  ood metrics: not present in this summary")
         else:
-            print(f"  ood metrics:  encoder={ood['encoder']:.4f} diffusion={ood['diffusion']:.4f} baseline={ood['baseline']:.4f}")
+            print(f"  ood metrics:  fw_det={ood['encoder']:.4f} fw_diff={ood['diffusion']:.4f} baseline={ood['baseline']:.4f}")
 
 
 if __name__ == "__main__":

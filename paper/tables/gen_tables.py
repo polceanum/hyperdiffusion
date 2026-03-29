@@ -70,15 +70,15 @@ def gen_task_benchmark_table():
         "\\centering",
         "\\begin{tabular}{llcccc}",
         "\\toprule",
-        "Task & Metric & Encoder & Baseline & Enc Gain \\\\",
+        "Task & Metric & FW (det.) & Baseline & FW Gain \\\\",
         "\\midrule",
         body,
         "\\bottomrule",
         "\\end{tabular}",
         "\\caption{Per-task benchmark from run-level \\texttt{overall} summaries (v2 results, 1000 training steps per stage). "
-        "\\emph{Encoder}: hypernetwork with attention-based support encoding. "
+        "\\emph{FW (det.)}: fast-weights hypernetwork, deterministic attention over support set (no sampling). "
         "\\emph{Baseline}: static MLP with no per-task adaptation. "
-        "Enc Gain shows relative improvement of Encoder over Baseline.}",
+        "FW Gain shows relative improvement of FW (det.) over Baseline.}",
         "\\label{tab:task_benchmark}",
         "\\end{table}",
         "",
@@ -153,7 +153,7 @@ def gen_encoding_mode_table():
         "\\centering",
         "\\begin{tabular}{lcccc}",
         "\\toprule",
-        "Mode & Enc R\\textsuperscript{2} & Base R\\textsuperscript{2} & Reward Win & $\\Delta$Reward \\\\",
+        "Mode & FW(det.) R\\textsuperscript{2} & Base R\\textsuperscript{2} & Reward Win & $\\Delta$Reward \\\\",
         "\\midrule",
         body,
         "\\bottomrule",
@@ -195,7 +195,7 @@ def gen_per_family_table(task: str, caption: str, metric_key: str, label: str, f
         f"\\caption{{{caption}}}",
         "\\begin{tabular}{lcc}",
         "\\toprule",
-        "Family & Encoder & Baseline \\\\",
+        "Family & FW (det.) & Baseline \\\\",
         "\\midrule",
         body,
         "\\bottomrule",

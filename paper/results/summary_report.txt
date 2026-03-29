@@ -2,15 +2,15 @@
 ====================================================================
   SECTION 1 — Per-Task Benchmark  (runs/*_v2, encoding_mode=support)
 ====================================================================
-  Task               Metric    Encoder  Diffusion   Baseline   Enc-Base
+  Task               Metric   FW(det.)  FW(diff.)   Baseline    FW-Base
   ----------------------------------------------------------------
-  classification     acc         0.811      0.810      0.668      0.142
-  regression         r2          0.666      0.665     -1.778      2.445
-  bandit             r2         -0.039     -0.042     -2.296      2.257
-  control            r2          0.997      0.981      0.790      0.207
+  classification     acc         0.809      0.809      0.665      0.144
+  regression         r2          0.670      0.644     -1.782      2.452
+  bandit             r2          0.090      0.094     -2.274      2.364
+  control            r2          0.974      0.972      0.789      0.184
 
-  Encoder = attention meta-learner over support set.
-  Diffusion = DDIM sampler conditioned on support context (main model).
+  FW (det.) = fast weights via deterministic attention over support set (no sampling).
+  FW (diff.) = fast weights via DDIM sampling of latent space (main model).
   Baseline = static MLP, no support set (task-agnostic lower bound).
 
 ====================================================================
@@ -29,23 +29,23 @@
   Aggregated over 3 seeds (mean ± std)
   Mode                    Enc R²             Diff R²             Base R²         Rew WinRate           ΔReward
   ----------------------------------------------------------------------------------------------------------------------------------
-  support            0.968±0.007         0.941±0.019         0.817±0.031          21.2%±9.3%        -7.32±0.89
-  text               0.781±0.019         0.075±0.737         0.819±0.033         27.1%±20.3%        -3.39±0.85
-  hybrid             0.965±0.014         0.966±0.004         0.815±0.036          21.5%±8.9%        -5.39±0.45
-  oracle             0.857±0.025         0.785±0.004         0.816±0.033         17.0%±19.0%        -1.09±0.81
+  support            0.973±0.001         0.962±0.005         0.816±0.029          22.2%±9.4%        -6.01±0.58
+  text               0.813±0.044         0.731±0.161         0.815±0.031         12.2%±21.0%        -3.96±1.21
+  hybrid             0.970±0.005         0.962±0.003         0.818±0.034          21.9%±6.8%        -4.73±0.87
+  oracle             0.867±0.033         0.799±0.059         0.817±0.033           1.7%±2.2%        -3.02±0.58
 
 ====================================================================
   SECTION 3 — Key Conclusions
 ====================================================================
 
   [C1] Meta-learning beats task-agnostic baseline across all tasks
-       Encoder and diffusion consistently outperform the static MLP
-       on classification (acc), regression, bandit, and control
+       FW (det.) and FW (diff.) consistently outperform the static
+       MLP on classification (acc), regression, bandit, and control
        (R²).
 
-  [C2] Diffusion ≈ Encoder in R²
-       Diffusion model matches encoder quality on most tasks,
-       showing DDIM sampling of the latent space captures the full
+  [C2] FW (diff.) ≈ FW (det.) in R²
+       FW (diff.) matches FW (det.) quality on most tasks, showing
+       DDIM sampling of the latent space captures the full
        task-posterior rather than just the mean.
 
   [C3] Text mode improves semantics, not precision

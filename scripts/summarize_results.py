@@ -74,7 +74,7 @@ def print_task_benchmark():
     print("=" * 68)
     print("  SECTION 1 — Per-Task Benchmark  (runs/*_v2, encoding_mode=support)")
     print("=" * 68)
-    print(f"  {'Task':<18} {'Metric':<6}  {'Encoder':>9}  {'Diffusion':>9}  {'Baseline':>9}  {'Enc-Base':>9}")
+    print(f"  {'Task':<18} {'Metric':<6}  {'FW(det.)':>9}  {'FW(diff.)':>9}  {'Baseline':>9}  {'FW-Base':>9}")
     print("  " + "-" * 64)
     for task, metric, enc, diff, base in rows:
         gap = (enc - base) if (enc is not None and base is not None) else None
@@ -83,8 +83,8 @@ def print_task_benchmark():
             f"{fmt(enc):>9}  {fmt(diff):>9}  {fmt(base):>9}  {fmt(gap):>9}"
         )
     print()
-    print("  Encoder = attention meta-learner over support set.")
-    print("  Diffusion = DDIM sampler conditioned on support context (main model).")
+    print("  FW (det.) = fast weights via deterministic attention over support set (no sampling).")
+    print("  FW (diff.) = fast weights via DDIM sampling of latent space (main model).")
     print("  Baseline = static MLP, no support set (task-agnostic lower bound).")
     print()
 
@@ -181,11 +181,11 @@ def print_conclusions():
 
     conclusions = [
         ("C1", "Meta-learning beats task-agnostic baseline across all tasks",
-         "Encoder and diffusion consistently outperform the static MLP on "
+         "FW (det.) and FW (diff.) consistently outperform the static MLP on "
          "classification (acc), regression, bandit, and control (R²)."),
 
-        ("C2", "Diffusion ≈ Encoder in R²",
-         "Diffusion model matches encoder quality on most tasks, showing DDIM "
+        ("C2", "FW (diff.) ≈ FW (det.) in R²",
+         "FW (diff.) matches FW (det.) quality on most tasks, showing DDIM "
          "sampling of the latent space captures the full task-posterior rather "
          "than just the mean."),
 

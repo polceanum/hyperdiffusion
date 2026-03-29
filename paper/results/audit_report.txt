@@ -3,24 +3,24 @@ RESULT ARTIFACT AUDIT
 
 Classification
   source: runs/classification_v2/summary.json
-  split config: train=8 eval=0
-  main metrics: encoder=0.8107 diffusion=0.8098 baseline=0.6685
-  ood metrics: not present in this summary
+  split config: train=8 eval=10
+  main metrics: fw_det=0.8089 fw_diff=0.8086 baseline=0.6648
+  ood metrics:  fw_det=0.6898 fw_diff=0.6931 baseline=0.5786
 
 Regression
   source: runs/regression_v2/summary.json
   split config: train=6 eval=4
-  main metrics: encoder=0.6665 diffusion=0.6649 baseline=-1.7781
-  ood metrics:  encoder=-0.0252 diffusion=0.1561 baseline=-5.8269
+  main metrics: fw_det=0.6698 fw_diff=0.6441 baseline=-1.7821
+  ood metrics:  fw_det=0.4357 fw_diff=0.3063 baseline=-5.8037
 
 Bandit
   source: runs/bandit_v2/summary.json
   split config: train=4 eval=2
-  main metrics: encoder=-0.0392 diffusion=-0.0423 baseline=-2.2957
-  ood metrics:  encoder=-0.0326 diffusion=-0.0026 baseline=-0.5700
+  main metrics: fw_det=0.0902 fw_diff=0.0938 baseline=-2.2737
+  ood metrics:  fw_det=-0.3588 fw_diff=-0.2691 baseline=-0.5690
 
 Control
   source: runs/control_v2/summary.json
   split config: train=8 eval=4
-  main metrics: encoder=0.9970 diffusion=0.9810 baseline=0.7902
-  ood metrics:  encoder=0.9699 diffusion=0.9511 baseline=0.7723
+  main metrics: fw_det=0.9736 fw_diff=0.9722 baseline=0.7894
+  ood metrics:  fw_det=0.9421 fw_diff=0.9440 baseline=0.7711
